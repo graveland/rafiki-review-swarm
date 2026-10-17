@@ -1,0 +1,19 @@
+{
+  "name": "review-pr:gather",
+  "description": "PR-review gather seat: picks the definitions and callers/callees a PR review needs, read-only (review-swarm)",
+  "kind": "fundi",
+  "model": "openrouter/~deepseek/deepseek-flash-latest",
+  "tools": [
+    "read",
+    "glob",
+    "grep",
+    "ls"
+  ],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-gather.md}}",
+  "max_cost": 2,
+  "max_depth": 0,
+  "max_children": 0
+}

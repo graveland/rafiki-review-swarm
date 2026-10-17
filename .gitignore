@@ -1,0 +1,6 @@
+runs/
+.daemon/
+builds/
+__pycache__/
+.venv/
+.worktrees/

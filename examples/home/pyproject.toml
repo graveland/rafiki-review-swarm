@@ -1,0 +1,8 @@
+[project]
+name = "example-review-home"
+version = "0.0.0"
+requires-python = ">=3.11"
+dependencies = ["review-swarm @ git+https://github.com/graveland/rafiki-review-swarm.git@v0.1.0"]
+
+[tool.uv]
+package = false

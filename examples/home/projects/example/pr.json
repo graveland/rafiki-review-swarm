@@ -1,0 +1,17 @@
+{
+  "confirm_over_tokens": 150000,
+  "finder": "review-pr:finder",
+  "gather": "review-pr:gather",
+  "panel": [
+    "review-pr:panel-1",
+    "review-pr:panel-2",
+    "review-pr:panel-3",
+    "review-pr:panel-4"
+  ],
+  "verifiers": {
+    "review-pr:panel-1": "review-pr:verify-1",
+    "review-pr:panel-2": "review-pr:verify-2",
+    "review-pr:panel-3": "review-pr:verify-3",
+    "review-pr:panel-4": "review-pr:verify-4"
+  }
+}

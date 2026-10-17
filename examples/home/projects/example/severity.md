@@ -1,0 +1,1 @@
+High severity is a defect that loses or corrupts data, exposes credentials, takes a running service down, or lets an untrusted caller bypass an authorization check. Medium severity is a wrong result or a stalled operation an operator can recover from by hand. Anything that is merely style, naming or a formatter fix is not a defect.

@@ -1,0 +1,10 @@
+{
+  "name": "review-audit-claude:finder",
+  "description": "whole-repo audit finder seat: one lens over one component, seam or cross-cutting slice, read-only (review-swarm, claude-only)",
+  "kind": "claude",
+  "model": "claude-sonnet-5-5",
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-reviewer.md}}",
+  "max_cost": 10,
+  "max_depth": 0,
+  "max_children": 0
+}

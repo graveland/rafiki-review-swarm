@@ -1,0 +1,10 @@
+{
+  "name": "review-pr-claude:panel-2",
+  "description": "PR-review panel seat 2: whole-change adversarial review against the stated intent (review-swarm, claude-only)",
+  "kind": "claude",
+  "model": "claude-fable-5-1",
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-panel.md}}",
+  "max_cost": 30,
+  "max_depth": 0,
+  "max_children": 0
+}

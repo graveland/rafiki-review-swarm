@@ -1,0 +1,19 @@
+{
+  "name": "review-pr:verify-3",
+  "description": "PR-review verifier seat 3: refute-by-default check of one cluster or one checked-nothing claim (review-swarm)",
+  "kind": "fundi",
+  "model": "openrouter/openai/gpt-5.6-sol",
+  "tools": [
+    "read",
+    "glob",
+    "grep",
+    "ls"
+  ],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-verifier.md}}",
+  "max_cost": 20,
+  "max_depth": 0,
+  "max_children": 0
+}

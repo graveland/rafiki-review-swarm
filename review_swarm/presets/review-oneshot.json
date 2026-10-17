@@ -1,0 +1,14 @@
+{
+  "name": "review:oneshot",
+  "description": "tool-less finder seat: context inline in the task, asks for more via needs (review-swarm)",
+  "kind": "fundi",
+  "model": "openrouter/z-ai/glm-5.3-flash",
+  "tools": [],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-common-notools.md}}\n\n{{seat-oneshot.md}}",
+  "max_cost": 0.15,
+  "max_depth": 0,
+  "max_children": 0
+}

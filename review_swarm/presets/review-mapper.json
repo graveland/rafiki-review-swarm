@@ -1,0 +1,19 @@
+{
+  "name": "review:mapper",
+  "description": "mapper seat: carves a repo into review components (review-swarm)",
+  "kind": "fundi",
+  "model": "openrouter/z-ai/glm-5.3-flash",
+  "tools": [
+    "read",
+    "glob",
+    "grep",
+    "ls"
+  ],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-mapper.md}}",
+  "max_cost": 0.25,
+  "max_depth": 0,
+  "max_children": 0
+}

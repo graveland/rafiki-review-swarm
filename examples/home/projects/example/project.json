@@ -1,0 +1,14 @@
+{
+  "name": "example",
+  "target": "~/code/example",
+  "include": [
+    "src/**",
+    "README.md"
+  ],
+  "must_cover": [
+    "src/**"
+  ],
+  "context_files": [
+    "README.md"
+  ]
+}

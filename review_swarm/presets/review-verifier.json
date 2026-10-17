@@ -1,0 +1,19 @@
+{
+  "name": "review:verifier",
+  "description": "verifier seat: tries to refute one finding, read-only (review-swarm)",
+  "kind": "fundi",
+  "model": "openrouter/z-ai/glm-5.3-flash",
+  "tools": [
+    "read",
+    "glob",
+    "grep",
+    "ls"
+  ],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-verifier.md}}",
+  "max_cost": 0.1,
+  "max_depth": 0,
+  "max_children": 0
+}

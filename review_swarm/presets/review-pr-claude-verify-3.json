@@ -1,0 +1,10 @@
+{
+  "name": "review-pr-claude:verify-3",
+  "description": "PR-review verifier seat 3: refute-by-default check of one cluster or one checked-nothing claim (review-swarm, claude-only)",
+  "kind": "claude",
+  "model": "claude-opus-5-5",
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-verifier.md}}",
+  "max_cost": 15,
+  "max_depth": 0,
+  "max_children": 0
+}

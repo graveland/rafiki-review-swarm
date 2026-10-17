@@ -1,0 +1,19 @@
+{
+  "name": "review-pr:finder",
+  "description": "PR-review finder seat: one lens over one change, read-only (review-swarm)",
+  "kind": "fundi",
+  "model": "openrouter/~deepseek/deepseek-flash-latest",
+  "tools": [
+    "read",
+    "glob",
+    "grep",
+    "ls"
+  ],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-reviewer.md}}",
+  "max_cost": 2,
+  "max_depth": 0,
+  "max_children": 0
+}

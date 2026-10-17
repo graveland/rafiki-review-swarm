@@ -1,0 +1,10 @@
+{
+  "name": "review-audit-claude:verifier",
+  "description": "whole-repo audit verifier seat: refute-by-default check of one finding, read-only (review-swarm, claude-only)",
+  "kind": "claude",
+  "model": "claude-sonnet-5-5",
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-verifier.md}}",
+  "max_cost": 10,
+  "max_depth": 0,
+  "max_children": 0
+}

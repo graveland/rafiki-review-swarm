@@ -1,0 +1,1 @@
+Every finding needs the exact file and line, the concrete claim, and the reachable path that makes the claim true. A defect also needs a repro: the inputs or the sequence of events that triggers it. A finding without a concrete trigger is below the bar and stays out.

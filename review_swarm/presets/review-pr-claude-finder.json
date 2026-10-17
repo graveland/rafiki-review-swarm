@@ -1,0 +1,10 @@
+{
+  "name": "review-pr-claude:finder",
+  "description": "PR-review finder seat: one lens over one change, read-only (review-swarm, claude-only)",
+  "kind": "claude",
+  "model": "claude-sonnet-5-5",
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-reviewer.md}}",
+  "max_cost": 8,
+  "max_depth": 0,
+  "max_children": 0
+}

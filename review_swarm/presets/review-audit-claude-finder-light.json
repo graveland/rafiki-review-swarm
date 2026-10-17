@@ -1,0 +1,10 @@
+{
+  "name": "review-audit-claude:finder-light",
+  "description": "whole-repo audit finder seat for mechanical lenses (cross-referencing generated docs, grepping for callers), read-only (review-swarm, claude-only)",
+  "kind": "claude",
+  "model": "claude-haiku-5-5",
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-reviewer.md}}",
+  "max_cost": 4,
+  "max_depth": 0,
+  "max_children": 0
+}

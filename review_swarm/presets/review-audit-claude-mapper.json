@@ -1,0 +1,10 @@
+{
+  "name": "review-audit-claude:mapper",
+  "description": "whole-repo audit mapper seat: carves a repo into review components from a file listing, read-only (review-swarm, claude-only)",
+  "kind": "claude",
+  "model": "claude-sonnet-5-5",
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-mapper.md}}",
+  "max_cost": 30,
+  "max_depth": 0,
+  "max_children": 0
+}

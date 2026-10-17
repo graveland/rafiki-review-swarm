@@ -1,0 +1,19 @@
+{
+  "name": "review-pr:verify-2",
+  "description": "PR-review verifier seat 2: refute-by-default check of one cluster or one checked-nothing claim (review-swarm)",
+  "kind": "fundi",
+  "model": "openrouter/google/gemini-4-argon",
+  "tools": [
+    "read",
+    "glob",
+    "grep",
+    "ls"
+  ],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-verifier.md}}",
+  "max_cost": 10,
+  "max_depth": 0,
+  "max_children": 0
+}
