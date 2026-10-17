@@ -38,7 +38,7 @@ from .common import (
     render_prompt,
 )
 from .rafiki_io import final_answer
-from .runs import next_attempt, run_cwd
+from .runs import next_attempt, run_cwd, with_tools
 from .stages import AT_CAP, child_metrics, model_labels, settled
 
 DEFAULT_TIMEOUT = 1800
@@ -437,6 +437,8 @@ def stage_review(rk, home, args):
         if j["key"] in jobs:
             raise Fail(f"review child {j['key']!r} is taken; rename the seat")
         jobs[j["key"]] = j
+    for j in jobs.values():
+        j["instruction"] = with_tools(rdir, j["instruction"])
 
     # Everything the stage reads is in place, so this is the point of no return:
     # claim the run for review (before any attempt dir exists, so a refused

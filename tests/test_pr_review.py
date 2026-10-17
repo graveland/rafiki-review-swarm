@@ -765,3 +765,18 @@ def test_a_misshapen_file_group_is_a_fail_not_a_crash(fake_rafiki, tmp_path):
 
     assert fake.seat_spawns == []
     assert json.loads((rdir / "state.json").read_text())["status"] == "confirmed"
+
+
+def test_every_review_seat_is_told_the_project_s_tools_before_its_answer_contract(fake_rafiki, tmp_path):
+    fake = fake_rafiki
+    fake.presets = SEATS
+    home, rdir = make_run(tmp_path)
+    (rdir / "project" / "tools.md").write_text("Use mcp__codescan__code_search on tree code.proj.")
+    scripted(fake, finder_liveness=FINDER_EMPTY, finder_stale_state=FINDER_EMPTY,
+             panel_1=PANEL_EMPTY_OK, panel_2=PANEL_EMPTY_OK)
+    pr_review.stage_review(fake, home, args())
+    assert len(fake.seat_spawns) == 4
+    for s in fake.seat_spawns:
+        text = s["instruction"]
+        assert "TOOLS AVAILABLE FOR THIS PROJECT:\nUse mcp__codescan__code_search on tree code.proj." in text
+        assert text.index("TOOLS AVAILABLE") < text.rindex("Answer with ONE final message")

@@ -19,6 +19,7 @@ from .common import (
     run,
 )
 from .rafiki_io import final_answer, prefill_read
+from .runs import with_tools
 from .stages import wait_settled
 
 GATHER_TIMEOUT = 1200       # one seat, one answer
@@ -569,10 +570,10 @@ def build_packet(rk, home, rdir, *, lens_generic):
             changed.append(p)
     gather_files = ["packet/intent.md"] + (["packet/diff.patch"] if mode in ("pr", "delta") else []) \
         + [f"tree/{p}" for p in changed]
-    instruction = render_prompt("task-pr-gather.md",
-                                intent=intent,
-                                changed_files="\n".join(run["files_changed"]) or "(no changed files in this run)",
-                                budget_tokens=str(CONTEXT_BUDGET_TOKENS))
+    instruction = with_tools(rdir, render_prompt(
+        "task-pr-gather.md", intent=intent,
+        changed_files="\n".join(run["files_changed"]) or "(no changed files in this run)",
+        budget_tokens=str(CONTEXT_BUDGET_TOKENS)))
     seat = pjson["gather"]
     context, notes = gather_context(rk, rdir, run, gather_files, instruction, seat)
     # A group that is not {name, paths} would meet a downstream `g.get` and crash

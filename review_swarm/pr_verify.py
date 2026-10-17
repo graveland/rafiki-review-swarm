@@ -41,7 +41,7 @@ from .pr_state import (
 )
 from .presets import live_seat, seat_kind
 from .rafiki_io import final_answer
-from .runs import next_attempt, run_cwd, run_text
+from .runs import next_attempt, run_cwd, run_text, with_tools
 from .stages import AT_CAP, child_metrics, model_labels, settled
 
 # The only checklist answer that is not a claim, and the canonical spelling of
@@ -688,9 +688,9 @@ def verify_run(rk, args, rdir, run, state) -> dict:
         jdir.mkdir(exist_ok=True)
         if job["kind"] == "claim":
             lens = lenses.get(job["lens"]) or {}
-            task = claim_task(job["lens"], lens.get("prompt", ""), job["reason"])
+            task = with_tools(rdir, claim_task(job["lens"], lens.get("prompt", ""), job["reason"]))
         else:
-            task = verify_task(rdir, job["member"])
+            task = with_tools(rdir, verify_task(rdir, job["member"]))
         (jdir / "task.md").write_text(task)
         (jdir / "prefill.txt").write_text("\n".join(packet) + "\n")
         try:

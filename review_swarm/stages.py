@@ -8,7 +8,15 @@ from pathlib import Path
 
 from rafiki import ConnectError
 
-from .common import PROMPTS, AtCap, Fail, as_line, last_json_block, parse_only, render_prompt
+from .common import (
+    PROMPTS,
+    AtCap,
+    Fail,
+    as_line,
+    last_json_block,
+    parse_only,
+    render_prompt,
+)
 from .presets import check_resumed, check_seats
 from .rafiki_io import final_answer
 from .runs import (
@@ -18,6 +26,7 @@ from .runs import (
     run_concerns,
     run_cwd,
     run_text,
+    with_tools,
 )
 
 # Default workers in flight per stage (--parallel); launch grants the stage this
@@ -289,9 +298,9 @@ def stage_map(rk, home, args):
     adir = next_attempt(rdir / "map")
     (adir / "seats.json").write_text(json.dumps({"presets": seats, "model": args.model}, indent=2) + "\n")
     packet, listing = map_packet(target, run)
-    task = render_prompt("task-map.md",
+    task = with_tools(rdir, render_prompt("task-map.md",
                          lenses=", ".join(c["name"] for c in run_concerns(rdir) if not c.get("packet")),
-                         must_cover="\n".join(run["must_cover"]), listing=listing)
+                         must_cover="\n".join(run["must_cover"]), listing=listing))
     (adir / "task.md").write_text(task)
     (adir / "prefill.txt").write_text("\n".join(packet) + "\n")
     shutil.copytree(PROMPTS, adir / "prompts")
@@ -532,8 +541,8 @@ def find_task(rdir, cell, reported, context=None):
               "concern_prompt": con["prompt"], "category_rules": rules, "suppress": suppress,
               "category": con["category"]}
     if context is not None:
-        return render_prompt("task-find-oneshot.md", context=context, **fields)
-    return render_prompt("task-find.md", **fields)
+        return with_tools(rdir, render_prompt("task-find-oneshot.md", context=context, **fields))
+    return with_tools(rdir, render_prompt("task-find.md", **fields))
 
 
 NEEDS_MAX_BYTES = 80_000   # extra inline context one round may add to a cell (~20K tokens)
@@ -895,11 +904,11 @@ def verify_task(rdir, f, job, also=()):
                       + "\n".join(f"- [{o.get('concern')}] {o.get('title')}: {o.get('claim')}" for o in also) + "\n"
                       if also else "")
     if job["kind"] == "quality":
-        return render_prompt("task-verify-quality.md", **common)
+        return with_tools(rdir, render_prompt("task-verify-quality.md", **common))
     if job["kind"] == "drift":
-        return render_prompt("task-verify-drift.md", **common)
-    return render_prompt("task-verify-defect.md", lens=job["lens"],
-                         severity_rubric=run_text(rdir, "severity.md"), **common)
+        return with_tools(rdir, render_prompt("task-verify-drift.md", **common))
+    return with_tools(rdir, render_prompt("task-verify-defect.md", lens=job["lens"],
+                         severity_rubric=run_text(rdir, "severity.md"), **common))
 
 
 def stage_verify(rk, home, args):

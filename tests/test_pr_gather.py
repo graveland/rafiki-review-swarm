@@ -1084,3 +1084,10 @@ def test_the_lean_estimate_prices_triggered_finders_and_no_claim_jobs(run_dir):
     assert est["fundi"]["by_seat"]["review-pr:finder"] == 0.3
     assert "review-pr:verify-3" not in est["fundi"]["by_seat"]
     assert est["claude"]["input_tokens"] == 2 * manifest["total_tokens"]
+
+
+def test_the_gather_seat_is_told_the_project_s_tools(run_dir):
+    (run_dir.rdir / "project" / "tools.md").write_text("Use mcp__codescan__code_search on tree code.demo.\n")
+    build(run_dir)
+    gathers = [s["instruction"] for s in run_dir.rk.seat_spawns if s["preset"] == "review-pr:gather"]
+    assert gathers and all("Use mcp__codescan__code_search on tree code.demo." in t for t in gathers)

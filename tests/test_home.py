@@ -10,7 +10,6 @@ from review_swarm import cli, runs
 from review_swarm.common import Fail
 from review_swarm.runs import Home, resolve_data, resolve_home
 
-
 # --- resolve_home ----------------------------------------------------------------
 
 def test_resolve_home_explicit_beats_env_beats_cwd(tmp_path):

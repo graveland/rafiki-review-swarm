@@ -119,6 +119,22 @@ def run_concerns(rdir):
     return json.loads((rdir / "project" / "concerns.json").read_text())["concerns"]
 
 
+ANSWER_CONTRACT = "Answer with ONE final message"
+
+
+def with_tools(rdir, instruction):
+    """A seat's instruction with the project's tools.md (what the machine running
+    the review offers beyond the seat's built-in tools: a code index, its tree
+    names) placed just before the answer contract. A tool a seat is not told
+    about goes unused, even when it is loaded."""
+    tools = run_text(rdir, "tools.md")
+    if not tools:
+        return instruction
+    block = "TOOLS AVAILABLE FOR THIS PROJECT:\n" + tools + "\n\n"
+    i = instruction.rfind(ANSWER_CONTRACT)
+    return instruction[:i] + block + instruction[i:] if i >= 0 else instruction + "\n\n" + block
+
+
 def run_text(rdir, name):
     f = rdir / "project" / name
     return f.read_text().strip() if f.exists() else ""

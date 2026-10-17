@@ -19,6 +19,7 @@ write it as well as the process that starts a stage.
     pr.json
     severity.md
     evidence.md
+    tools.md                # optional: tools the machine offers seats
     gold/<ref>.jsonl
     audit.json              # optional: whole-repo audit configuration
   lenses/                   # optional: your personal lens layer
@@ -87,6 +88,16 @@ This file names the seats for the PR pipeline. `gather`, `finder`, `panel` and
 Both are plain markdown with no keys. Their text is inserted into prompts:
 `severity.md` into the defect finder and the PR verifier, `evidence.md` into the
 defect and drift finders. Write the bar you want enforced, not a generic essay.
+
+### `projects/<name>/tools.md`
+
+Optional plain markdown, inserted into every seat's task (mapper, finders,
+panel, gather and verifiers in both pipelines), just before the answer
+contract. Use it for what the machine running the review offers beyond a seat's
+built-in tools: a code index and the tree name to scope it to, say. A tool a
+seat is not told about tends to go unused, particularly a deferred MCP tool it
+would have to search for. Keep it to what the seat should do with the tool;
+the seat already knows how to call it.
 
 ### `projects/<name>/gold/<ref>.jsonl`
 

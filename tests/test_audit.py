@@ -486,3 +486,14 @@ def test_the_audit_report_merges_lenses_keeps_real_not_worth_and_lets_a_later_at
     (rdir / "verify" / "02" / "verified.jsonl").unlink()
     text = audit_report.write_audit_report(rdir, tmp_home.path / "r.md").read_text()
     assert "## Quality, real but judged not worth fixing (1)" in text
+
+
+def test_the_mapper_is_told_the_project_s_tools(tmp_home, project, fake_rafiki, seats_ok):
+    rdir, run = new_run(tmp_home)
+    (rdir / "project" / "tools.md").write_text("Use mcp__codescan__code_trees.\n")
+    fake_rafiki.presets["audit:mapper"] = {"kind": "claude"}
+    fake_rafiki.answers["map-"] = '```json\n{"components": [], "seams": []}\n```'
+    stages.stage_map(fake_rafiki, tmp_home, SimpleNamespace(
+        run=run["run_id"], collect=None, mappers=1, model=None, timeout=5))
+    (spawn,) = fake_rafiki.seat_spawns
+    assert "Use mcp__codescan__code_trees." in spawn["instruction"]

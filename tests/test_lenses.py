@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from review_swarm import runs
-from review_swarm.common import LENSES as REPO_LENSES, Fail
+from review_swarm.common import LENSES as REPO_LENSES
+from review_swarm.common import Fail
 from review_swarm.lenses import Lens, build, load_layers, load_lens, select
 
 GOOD_FRONT = ("name: {name}\ncategory: defect\napplies_to: [design, pr, delta]\n"

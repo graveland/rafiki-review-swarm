@@ -1139,3 +1139,13 @@ def test_lean_fanout_reports_a_nothing_claim_without_verifying_it(tmp_path, fake
     breaches = [f for f in jsonl(rdir / "friction.jsonl") if f["kind"] == "instruction-breach"]
     assert [f["seat"] for f in breaches] == ["review-pr:panel-2"]
     assert "lens-d" in breaches[0]["note"]
+
+
+def test_every_verifier_task_carries_the_project_s_tools(tmp_path, fake_rafiki):
+    home, rdir, keys = panel_raiser_run(tmp_path, fake_rafiki)
+    (rdir / "project" / "tools.md").write_text("Use mcp__codescan__code_symbol on tree code.demo.\n")
+    for key in keys:
+        arm(fake_rafiki, key, verify_answer(True))
+    run_stage(fake_rafiki, home)
+    tasks = [s["instruction"] for s in fake_rafiki.seat_spawns]
+    assert tasks and all("Use mcp__codescan__code_symbol on tree code.demo." in t for t in tasks)
