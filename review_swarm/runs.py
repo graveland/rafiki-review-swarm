@@ -163,6 +163,19 @@ def run_new(home, project_name, ref, daemon):
     project = json.loads((pdir / "project.json").read_text())
     target = Path(project["target"]).expanduser().resolve()
     pdir = home.project_dir(project_name, target)
+    # "freeze": false reviews the checkout itself rather than a copy of it: the
+    # checkout is what the machine's other tooling (a code index, say) already
+    # describes, and a person who needs to work during a run uses a worktree.
+    # check_pinned then refuses any stage once the checkout has moved.
+    frozen = project.get("freeze", True)
+    if not frozen:
+        live = target_state(target)
+        if live["dirty"]:
+            raise Fail(f"{target} has uncommitted edits; a live run reviews the checkout as committed, "
+                       "so commit or stash them first")
+        if ref and git(target, "rev-parse", f"{ref}^{{commit}}").strip() != live["commit"]:
+            raise Fail(f"{target} is at {live['commit'][:12]}, not {ref}; check it out first "
+                       "(a live run reviews the checkout as it stands)")
     if ref:
         # A named baseline: freeze exactly that commit, independent of HEAD
         # and of the checkout's state.
@@ -183,10 +196,11 @@ def run_new(home, project_name, ref, daemon):
     rdir.mkdir(parents=True)
     shutil.copytree(pdir, rdir / "project")
     concerns = compile_audit_lenses(rdir / "project", home.lens_dir)
-    freeze_tree(target, ts["commit"], rdir / "tree")
+    if frozen:
+        freeze_tree(target, ts["commit"], rdir / "tree")
     run_doc = {
         "run_id": run_id, "project": project, "target": str(target), "target_state": ts,
-        "tree": str(rdir / "tree"), "files": files, "must_cover": must,
+        "tree": str(rdir / "tree") if frozen else None, "files": files, "must_cover": must,
         "daemon": daemon, "created": now_iso(),
     }
     (rdir / "run.json").write_text(json.dumps(run_doc, indent=2) + "\n")
@@ -194,7 +208,8 @@ def run_new(home, project_name, ref, daemon):
     if gold is not None and gold.exists():
         print(f"gold set: {gold} ({sum(1 for _ in gold.open())} entries); `grade` pre-fills matches")
     print(f"run {run_id}: {project['name']} @ {ts['commit'][:12]}{' (' + ref + ')' if ref else ''}, {len(files)} files "
-          f"({len(must)} must be covered), frozen at {rdir / 'tree'}"
+          f"({len(must)} must be covered), "
+          f"{('frozen at ' + str(rdir / 'tree')) if frozen else ('reviewing the checkout at ' + str(target))}"
           f"{f'; {len(concerns)} audit lenses compiled' if concerns else ''}")
     return run_id
 

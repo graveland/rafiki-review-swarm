@@ -50,6 +50,13 @@ The code reads these keys:
 - `must_cover`: globs matched against the included files. At least one included
   file must match one of these globs; otherwise the run is refused. Required.
 - `context_files`: extra files each map, find and verify seat reads. Optional.
+- `freeze`: `false` makes a whole-repo audit run (`run new`) review the target
+  checkout itself instead of a frozen copy of it. Optional; default `true`.
+  `run new` refuses a dirty checkout, or one whose HEAD is not the requested
+  `--ref`, and every stage refuses to start once the checkout has moved, so
+  leave it alone for the length of the run (work in a worktree meanwhile). It
+  suits a machine whose other tooling, such as a local code index, already
+  describes the checkout. PR runs always freeze their head and base trees.
 
 ### `projects/<name>/pr.json`
 

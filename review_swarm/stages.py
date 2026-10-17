@@ -184,8 +184,10 @@ def seam_problems(sm, owned, run):
             problems.append(f"seam {name}: glob {g} matches no file")
         elif not GLOB_CHARS & set(g) and g not in run["files"]:
             problems.append(f"seam {name}: unknown path {g}")
-    if not sm.get("paths") and run.get("tree"):
-        tree = Path(run["tree"])
+    if not sm.get("paths") and (run.get("tree") or run.get("target")):
+        # A frozen run's copy, or a live run's checkout (run_cwd would also
+        # re-check the pin, which validating a map has no need for).
+        tree = Path(run.get("tree") or run["target"])
         size = sum((tree / p).stat().st_size for p in seam_files(sm, owned, run["files"]) if (tree / p).is_file())
         if size > SEAM_UNION_MAX_BYTES:
             problems.append(f"seam {name}: its components hold ~{size // 3500}K tokens; "
