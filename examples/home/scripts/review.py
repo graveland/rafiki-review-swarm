@@ -1,3 +1,4 @@
+# review-swarm stage runner: rafiki runs this as a script child, with this home as --home
 import sys
 from pathlib import Path
 
