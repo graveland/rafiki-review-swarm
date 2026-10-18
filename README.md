@@ -181,8 +181,11 @@ uv run review-swarm launch -- <stage> <run-id> [stage flags]
 
 An agent driving a review starts each stage with rafiki's `pymodule_start`
 instead, so the stage and its seats are the agent's children and its settle
-reaches the agent. The [`review` skill](skills/review/SKILL.md) is written for
-that agent: give it to the one driving reviews.
+reaches the agent. The [`review` skill](review_swarm/skills/review/SKILL.md)
+is written for that agent. It ships inside the package, so a home that lists
+`review-swarm` under `[tool.rafiki] skill-sources` (the example home does)
+gives `review-swarm:review` to the owner's agents at the pinned version when
+the home is registered with `rafiki repo add`.
 
 ### A pull request, design doc or delta
 

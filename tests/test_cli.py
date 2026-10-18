@@ -16,7 +16,7 @@ from review_swarm.common import PACKAGE, render_prompt
 from review_swarm.runs import Home
 
 MY_FILES = [Path(cli.__file__), PACKAGE / "prompts" / "task-pr-gather.md",
-            PACKAGE / "prompts" / "task-pr-find.md", PACKAGE.parent / "skills" / "review" / "SKILL.md"]
+            PACKAGE / "prompts" / "task-pr-find.md", PACKAGE / "skills" / "review" / "SKILL.md"]
 
 
 def estimate(not_reported=(), blocking=(), total=4000):
