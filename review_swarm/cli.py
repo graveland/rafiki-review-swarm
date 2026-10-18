@@ -83,7 +83,8 @@ def add_stage_parsers(sub):
 def stage_parser(prog):
     ap = argparse.ArgumentParser(prog=prog)
     ap.add_argument("--home", default=None, help="the review home (config); the script shim supplies it")
-    ap.add_argument("--data", required=True, help="the data dir: runs/ lives here")
+    ap.add_argument("--data", default=None,
+                    help="the data dir: runs/ lives here (default: $REVIEW_SWARM_DATA in the executor's environment)")
     sub = ap.add_subparsers(dest="stage", required=True)
     add_stage_parsers(sub)
     return ap
@@ -97,11 +98,11 @@ def review_main(argv):
     if args.stage == "compare-pr":
         # Reached before Rafiki.inside(): this verb reads runs, so a child asked
         # for it needs no daemon and no result envelope.
-        compare_pr_cmd(Home(resolve_home(args.home), args.data), args)
+        compare_pr_cmd(Home(resolve_home(args.home), resolve_data(args.data)), args)
         return 0
     rk = Rafiki.inside()
     try:
-        summary = STAGES[args.stage](rk, Home(resolve_home(args.home), args.data), args)
+        summary = STAGES[args.stage](rk, Home(resolve_home(args.home), resolve_data(args.data)), args)
     except Fail as e:
         print(f"review: {e}", file=sys.stderr)
         rk.result({"stage": args.stage, "run": args.run, "error": str(e)})

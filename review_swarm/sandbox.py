@@ -337,6 +337,11 @@ def dsn_for(db):
     return f"{PG_ADMIN}/{db}?sslmode=disable"
 
 
+def inside_child():
+    """True inside a rafiki script child: the daemon sets this one variable."""
+    return bool(os.environ.get("RAFIKI_CHILD_CONNECT"))
+
+
 class Target:
     """Which rafiki the operator CLI talks to. live: the operator's own
     profile (or --profile) and the rafiki on PATH. sandbox: the sandbox's
@@ -353,6 +358,11 @@ class Target:
         return run(cmd, env=self.env, check=check, input=input)
 
     def client(self):
+        if not self.sandbox and inside_child():
+            # Run as a pymodule script (an agent's pymodule_run), the CLI is
+            # itself a rafiki child: it talks to the daemon over that child's
+            # own socket, with no profile on the executor needed.
+            return Rafiki.inside()
         if self.sandbox:
             # from_profile shells out to `rafiki profile show` with this
             # process's environment: point both at the sandbox.
@@ -362,6 +372,10 @@ class Target:
 
     def describe(self):
         """What a run records about the rafiki it runs on."""
+        if not self.sandbox and inside_child():
+            # A child credential is refused the daemon's status, which is where
+            # the version comes from; record that it was not read, not a guess.
+            return {"target": self.kind, "version": "unread (run inside a rafiki child)"}
         out = self.cli("status").stdout
         version = next((l.split(":", 1)[1].strip() for l in out.splitlines() if l.startswith("version:")), "?")
         d = {"target": self.kind, "version": version}
