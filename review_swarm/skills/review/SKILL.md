@@ -1,6 +1,6 @@
 ---
 name: review
-description: Run a review-swarm review of a design doc, a squashed PR, or the fixes pushed after a review. Use when a design doc has landed or before implementing a destructive or safety-bypassing path, when a PR is squashed and about to be marked ready or handed to a human reviewer, or when fixes have been pushed after a review and need re-judging.
+description: Run a review-swarm review of a design doc, a squashed PR, the fixes pushed after a review, or a whole-repo audit of a project's checkout. Use when asked to audit or sweep a repository rather than one change, when a design doc has landed or before implementing a destructive or safety-bypassing path, when a PR is squashed and about to be marked ready or handed to a human reviewer, or when fixes have been pushed after a review and need re-judging.
 ---
 
 # review
@@ -13,7 +13,8 @@ claude); the workspace is your own working directory, never the target repo.
 ## Modes and when
 
 A run pins a change by commit, freezes the trees it reviews, and puts seats from
-the `review-pr:` preset group on it. Three modes, one per moment:
+the `review-pr:` preset group on it. Three change modes, one per moment, plus a
+whole-repo audit:
 
 - `design`: a design doc has landed, or you are about to implement a path that
   destroys data or bypasses a safety check. Adds the questions the design must
@@ -22,12 +23,18 @@ the `review-pr:` preset group on it. Three modes, one per moment:
   reviewer. Defects in the change against the intent it states.
 - `delta`: fixes were pushed after a review. Re-judges each prior finding as
   fixed, not-fixed or incomplete.
+- audit: the whole checkout at one commit, not a change. Use it when asked to
+  audit or sweep a repository. Its seats and lenses come from the project's
+  `audit.json` (see "Whole-repo audit" below).
 
 ```
 review-swarm pr new <project> --mode pr --pr <N>
 review-swarm pr new <project> --mode design --doc <path to the design>
 review-swarm pr new <project> --mode delta --pr <N> --since <run>
+review-swarm run new <project> --ref <commit>
 ```
+
+Each prints the run id last.
 
 ## Running
 
@@ -45,7 +52,9 @@ pymodule_start(repo="review-swarm", script="review",
                labels={"review/run": "<run>", "review/stage": "<stage>"}, max_cost=<cap>)
 ```
 
-`<stage>` is `gather`, `review` or `verify-pr`, run in that order. Never start a
+For a change run, `<stage>` is `gather`, `review` or `verify-pr`, run in that
+order. For an audit run it is `map`, then `find`, then `verify`, with the operator
+between `map` and `find` (see "Running an audit" below). Never start a
 stage with `review-swarm launch` from Bash: it spawns the stage with no parent, so
 its seats are orphaned in the cockpit and no settle reaches you, which leaves
 only a shell loop on `rafiki logs -f` to notice the stage ended. `launch` is for
@@ -191,6 +200,27 @@ A target is replaced once and once only: two repo lenses that `replaces` the sam
 target fail `lenses build`, which names both files. Both would otherwise ship and
 one would win in a run, so replace a target from one lens and drop the duplicate
 rather than relying on which file sorts first.
+
+## Running an audit
+
+1. `map <run>`. The mapper splits the repo into components and seams and picks
+   the lenses each one runs.
+2. Stop. The map is the operator's hand step: reviewing it is reviewing what the
+   audit will cover. Tell the operator the run id and the candidate maps under
+   `<data dir>/runs/<project>/<run>/map/`, and wait. They promote one
+   (`review-swarm promote <run> map NN/mapper-N`) and correct
+   `map/final.json` by hand. Do not promote or edit the map yourself unless they
+   ask you to.
+3. `find <run> --arm swarm --arm seam --arm cross --rounds 1`. Pass explicit
+   `--arm`s on a large repo: `control` hands the whole repo to one cell and does
+   not fit. `find --only cell=...` re-runs single cells.
+4. `verify <run> --find 01` (the find attempt to verify).
+5. `review-swarm report <run> --out audit.md` from the home (a plain command,
+   not a stage), then hand the operator the report.
+
+With the project's `"freeze": false` the target checkout must stay at the run's
+commit, clean, until the run finishes; every stage refuses to start once it has
+moved. Without it the run freezes a copy and the checkout is free.
 
 ## Whole-repo audit
 
