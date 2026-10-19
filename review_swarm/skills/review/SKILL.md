@@ -123,7 +123,9 @@ disagreement with a confirmed finding is a row carrying the lines that say why.
 
 Two things the run already did, so do not redo them. Verifiers read every claim
 independently, so a confirmed finding stands on the code rather than on who
-raised it. And every always-on lens is answered with findings or with the literal
+raised it. A `quality` finding is judged against the purpose of the lens that
+raised it (real, and worth the change), not against the defect severity rubric,
+so a confirmed quality finding means the cut was checked, not that it is a bug. And every always-on lens is answered with findings or with the literal
 "checked: nothing, because <reason>", where the reason names the code that makes
 the concern impossible; a reason that is a judgement rather than code is a
 finding, and the verifier seats refute such answers by default. This lists what a

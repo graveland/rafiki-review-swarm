@@ -463,9 +463,18 @@ def claim_task(lens, lens_prompt, reason):
                          reason=reason or "(none given)")
 
 
-def verify_task(rdir, f):
+def verify_task(rdir, f, lenses=None):
+    """The verifier's task for one finding. A quality finding is judged against
+    the purpose of the lens that raised it (real, and worth the change), not
+    against the defect severity rubric: under that rubric every quality finding is
+    refuted as "style", so a quality lens could never produce a confirmed finding.
+    Both tasks answer in the same {"refuted": ...} shape, so voting is unchanged."""
     fields = {k: str(f.get(k, "") or "(none given)") for k in
               ("title", "file", "line", "severity", "claim", "evidence", "repro")}
+    if f.get("category") == "quality":
+        lens = (lenses or {}).get(str(f.get("lens") or "")) or {}
+        return render_prompt("task-pr-verify-quality.md",
+                             lens_prompt=str(lens.get("prompt") or "(none given)"), **fields)
     return render_prompt("task-pr-verify.md", severity_rubric=run_text(rdir, "severity.md"), **fields)
 
 
@@ -690,7 +699,7 @@ def verify_run(rk, args, rdir, run, state) -> dict:
             lens = lenses.get(job["lens"]) or {}
             task = with_tools(rdir, claim_task(job["lens"], lens.get("prompt", ""), job["reason"]))
         else:
-            task = with_tools(rdir, verify_task(rdir, job["member"]))
+            task = with_tools(rdir, verify_task(rdir, job["member"], lenses))
         (jdir / "task.md").write_text(task)
         (jdir / "prefill.txt").write_text("\n".join(packet) + "\n")
         try:

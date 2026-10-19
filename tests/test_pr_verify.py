@@ -1149,3 +1149,30 @@ def test_every_verifier_task_carries_the_project_s_tools(tmp_path, fake_rafiki):
     run_stage(fake_rafiki, home)
     tasks = [s["instruction"] for s in fake_rafiki.seat_spawns]
     assert tasks and all("Use mcp__codescan__code_symbol on tree code.demo." in t for t in tasks)
+
+
+def test_a_quality_finding_is_judged_against_its_lens_not_the_severity_rubric(tmp_path):
+    (tmp_path / "project").mkdir()
+    (tmp_path / "project" / "severity.md").write_text("S1 SEVERITY-RUBRIC-MARKER")
+    lenses = {"kiss": {"name": "kiss", "prompt": "KISS-PURPOSE-MARKER"}}
+    f = {"title": "five copies of one helper", "file": "a.go", "line": 3, "category": "quality",
+         "lens": "kiss", "claim": "c", "evidence": "e", "repro": "merge them"}
+    task = pr_verify.verify_task(tmp_path, f, lenses)
+    assert "KISS-PURPOSE-MARKER" in task
+    assert "SEVERITY-RUBRIC-MARKER" not in task
+    assert "WORTH IT" in task and '"refuted"' in task
+
+
+def test_a_defect_finding_still_gets_the_severity_rubric(tmp_path):
+    (tmp_path / "project").mkdir()
+    (tmp_path / "project" / "severity.md").write_text("S1 SEVERITY-RUBRIC-MARKER")
+    lenses = {"kiss": {"name": "kiss", "prompt": "KISS-PURPOSE-MARKER"}}
+    f = {"title": "deadlock", "file": "a.go", "line": 3, "category": "defect", "lens": "kiss"}
+    task = pr_verify.verify_task(tmp_path, f, lenses)
+    assert "SEVERITY-RUBRIC-MARKER" in task
+    assert "KISS-PURPOSE-MARKER" not in task
+
+
+def test_a_quality_finding_whose_lens_is_unknown_still_gets_the_quality_task(tmp_path):
+    task = pr_verify.verify_task(tmp_path, {"category": "quality", "lens": "gone"}, {})
+    assert "WORTH IT" in task and "(none given)" in task
