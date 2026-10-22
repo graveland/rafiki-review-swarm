@@ -89,6 +89,11 @@ This file names the seats for the PR pipeline. `gather`, `finder`, `panel` and
   Default `false`.
 - `verify_claims`: `true` sends "checked: nothing" answers to verifiers.
   Default `false`.
+- `packet_exclude`: globs (`fnmatchcase`, so `*` crosses `/`) for changed files
+  the packet leaves out whole, such as generated code. The change itself still
+  reaches every seat through `packet/diff.patch`, and a range the gather seat
+  asks for inside such a file is kept. Each drop is recorded as `packet-drop`
+  friction. Default none.
 
 ### `projects/<name>/severity.md` and `evidence.md`
 

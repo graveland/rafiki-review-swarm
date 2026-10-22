@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from . import analysis, pr_state, presets
@@ -97,6 +98,9 @@ def pr_json(rdir):
     for key in ("gather", "finder", "panel", "verifiers"):
         if not doc.get(key):
             raise Fail(f"{f}: no {key} seat configured")
+    excl = doc.get("packet_exclude", [])
+    if not isinstance(excl, list) or not all(isinstance(g, str) for g in excl):
+        raise Fail(f"{f}: packet_exclude must be a list of glob strings, got {excl!r}")
     return doc
 
 
@@ -565,6 +569,17 @@ def build_packet(rk, home, rdir, *, lens_generic):
                                             "note": f"{p}: a path with {GLOB_CHARS!r} is a glob to the "
                                                     f"pre-fill reader and a literal path to a seat that reads "
                                                     f"the list; left out of the packet"})
+            continue
+        # A generated file can be most of a packet while its change is a few diff
+        # lines, which the diff already carries; the whole file only crowds the
+        # change out of a seat's window. A gather range into it still reaches the
+        # packet, since the seat asked for that part on purpose.
+        excluded = next((g for g in pjson.get("packet_exclude", []) if fnmatchcase(p, g)), None)
+        if excluded:
+            pr_state.append_friction(rdir, {"kind": "packet-drop",
+                                            "note": f"{p}: matches pr.json packet_exclude {excluded!r}; "
+                                                    f"the whole file is left out of the packet, its change "
+                                                    f"is in packet/diff.patch"})
             continue
         if (rdir / "tree" / p).is_file():
             changed.append(p)

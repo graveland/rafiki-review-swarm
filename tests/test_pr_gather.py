@@ -752,6 +752,28 @@ def test_dropped_context_rows_are_friction_not_a_silent_drop(run_dir):
     assert (run_dir.rdir / "packet" / "files.txt").read_text() == "\n".join(FILES_TXT[:7]) + "\n"
 
 
+def test_a_packet_exclude_keeps_the_whole_file_out_but_not_its_range(run_dir):
+    cfg = run_dir.rdir / "project" / "pr.json"
+    cfg.write_text(json.dumps({**json.loads(cfg.read_text()), "packet_exclude": ["src/a*"]}) + "\n")
+    build(run_dir)
+    files = (run_dir.rdir / "packet" / "files.txt").read_text().splitlines()
+    assert "tree/src/a.py" not in files
+    assert "tree/src/b.py" in files
+    # The gather seat's range into the excluded file is a deliberate ask, so it stays.
+    assert "tree/src/a.py:1-2" in files
+    assert "a = 2" in (run_dir.rdir / "packet" / "diff.patch").read_text()
+    drops = [json.loads(l) for l in (run_dir.rdir / "friction.jsonl").read_text().splitlines()
+             if json.loads(l)["kind"] == "packet-drop"]
+    assert len(drops) == 1 and "src/a.py: matches pr.json packet_exclude 'src/a*'" in drops[0]["note"]
+
+
+def test_a_packet_exclude_that_is_not_a_list_of_globs_fails(run_dir):
+    cfg = run_dir.rdir / "project" / "pr.json"
+    cfg.write_text(json.dumps({**json.loads(cfg.read_text()), "packet_exclude": "src/a.py"}) + "\n")
+    with pytest.raises(Fail, match="packet_exclude must be a list of glob strings"):
+        build(run_dir)
+
+
 def test_the_run_snapshot_has_no_gold_answer_key(run_dir):
     """Every seat runs with cwd = the run directory, so the calibration answer
     key must not be in the snapshot; the lens `catches` validation reads it from
