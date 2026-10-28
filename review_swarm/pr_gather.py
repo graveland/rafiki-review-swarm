@@ -238,12 +238,37 @@ def as_int(v):
         return None
 
 
+def is_bot(row):
+    user = row.get("user") or {}
+    return user.get("type") == "Bot" or str(user.get("login") or "").endswith("[bot]")
+
+
+def latest_bot_comments_only(rows):
+    """A bot's issue comments are status reports that each push supersedes (a
+    coverage report per CI run), so only its newest one is kept: nineteen
+    copies of a repo-wide coverage table made a 7K-line PR's packet 1.2M
+    tokens, 80% of it threads.md. A bot's line comments on the diff are
+    findings, not reports, and are left alone by only applying this to the
+    issue-comments API."""
+    newest = {}
+    for i, row in enumerate(rows):
+        if isinstance(row, dict) and is_bot(row):
+            login = str((row.get("user") or {}).get("login") or "?")
+            key = (str(row.get("created_at") or ""), as_int(row.get("id")) or 0, i)
+            if login not in newest or key > newest[login][0]:
+                newest[login] = (key, i)
+    keep = {i for _, i in newest.values()}
+    return [row for i, row in enumerate(rows)
+            if not (isinstance(row, dict) and is_bot(row)) or i in keep]
+
+
 def threads_text(pr, repo):
     """Review comments and issue comments as `## <path>:<line> <user>` blocks.
     Rows are sorted within each API's list so the file does not depend on the
     order the API happened to return. Every page is read: `--paginate --slurp`
     collects one array per page, so the file is the whole thread, never the
-    first 30 rows of it. Returns (text, errors): a failed API call, or a comment
+    first 30 rows of it, except that a bot's issue comments collapse to its
+    newest (latest_bot_comments_only). Returns (text, errors): a failed API call, or a comment
     whose line cannot be read, is reported and the block is written without a
     line rather than at line 0."""
     if not (pr and repo):
@@ -264,6 +289,8 @@ def threads_text(pr, repo):
         if not isinstance(rows, list):
             errors.append(f"{api}: expected a list of comments, got {type(rows).__name__}")
             continue
+        if "/issues/" in api:
+            rows = latest_bot_comments_only(rows)
         blocks = []
         for row in rows:
             if not isinstance(row, dict):

@@ -366,6 +366,45 @@ def test_every_page_of_the_comments_apis_reaches_threads_md(run_dir, monkeypatch
     assert "## (issue comment) i1\nissue page" in text
 
 
+def test_a_bots_issue_comments_collapse_to_its_newest(run_dir, monkeypatch):
+    """A bot re-posting a status report on every push would put every copy in
+    each seat's packet. Only its newest issue comment is kept, whether the bot
+    is known by user.type or only by its `[bot]` login; a bot's line comments
+    and every human comment are kept whole."""
+    def answer(*args):
+        if "/pulls/" in args[1]:
+            return [{"path": "src/a.py", "line": 1, "user": {"login": "codex[bot]", "type": "Bot"},
+                     "body": "line finding"},
+                    {"path": "src/a.py", "line": 2, "user": {"login": "codex[bot]", "type": "Bot"},
+                     "body": "second finding"}]
+        return [{"id": 1, "created_at": "2026-01-01T00:00:00Z",
+                 "user": {"login": "cov[bot]", "type": "Bot"}, "body": "coverage old"},
+                {"id": 3, "created_at": "2026-01-03T00:00:00Z",
+                 "user": {"login": "cov[bot]", "type": "Bot"}, "body": "coverage new"},
+                {"id": 2, "created_at": "2026-01-02T00:00:00Z",
+                 "user": {"login": "cov[bot]", "type": "Bot"}, "body": "coverage mid"},
+                {"id": 4, "created_at": "2026-01-01T00:00:00Z",
+                 "user": {"login": "ci", "type": "Bot"}, "body": "ci old"},
+                {"id": 5, "created_at": "2026-01-02T00:00:00Z",
+                 "user": {"login": "ci", "type": "Bot"}, "body": "ci new"},
+                {"id": 6, "created_at": "2026-01-01T00:00:00Z",
+                 "user": {"login": "dco[bot]"}, "body": "dco old"},
+                {"id": 7, "created_at": "2026-01-02T00:00:00Z",
+                 "user": {"login": "dco[bot]"}, "body": "dco new"},
+                {"id": 8, "created_at": "2026-01-01T00:00:00Z",
+                 "user": {"login": "human", "type": "User"}, "body": "first"},
+                {"id": 9, "created_at": "2026-01-02T00:00:00Z",
+                 "user": {"login": "human", "type": "User"}, "body": "second"}]
+
+    monkeypatch.setattr(pr_gather, "gh_json", answer)
+    build(run_dir)
+    text = (run_dir.rdir / "packet" / "threads.md").read_text()
+    for kept in ("line finding", "second finding", "coverage new", "ci new", "dco new", "first", "second"):
+        assert kept in text
+    for dropped in ("coverage old", "coverage mid", "ci old", "dco old"):
+        assert dropped not in text
+
+
 def test_a_dot_directory_context_range_is_not_mangled(run_dir):
     """`lstrip("./")` strips leading characters, not the prefix, so
     `.github/x.yml` became `github/x.yml` and was dropped as `not in the frozen
