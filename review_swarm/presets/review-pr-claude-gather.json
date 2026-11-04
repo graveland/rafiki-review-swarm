@@ -2,7 +2,7 @@
   "name": "review-pr-claude:gather",
   "description": "PR-review gather seat: picks the definitions and callers/callees a PR review needs, read-only (review-swarm, claude-only)",
   "kind": "claude",
-  "model": "claude-haiku-5-5",
+  "model": "anthropic/claude-haiku-5-5",
   "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-gather.md}}",
   "max_cost": 3,
   "max_depth": 0,
