@@ -4,7 +4,7 @@
   "kind": "claude",
   "model": "anthropic/claude-opus-5-5",
   "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-panel.md}}",
-  "max_cost": 15,
+  "max_cost": 20,
   "max_depth": 0,
   "max_children": 0
 }
