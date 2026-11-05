@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [[package]]
@@ -189,7 +189,7 @@ wheels = [
 [[package]]
 name = "rafiki-py"
 version = "0.2.0"
-source = { git = "https://github.com/graveland/rafiki.git?subdirectory=sdk%2Fpython&rev=v0.1.9#655dfd3a0a3e0379f53eeae5514af1916ef8aaae" }
+source = { git = "https://github.com/graveland/rafiki.git?subdirectory=sdk%2Fpython&rev=v0.5.10#6eb3712390466e5b55fa379a4412a19a38368da8" }
 dependencies = [
     { name = "httpx" },
 ]
@@ -211,7 +211,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pyyaml", specifier = ">=6" },
-    { name = "rafiki-py", git = "https://github.com/graveland/rafiki.git?subdirectory=sdk%2Fpython&rev=v0.1.9" },
+    { name = "rafiki-py", git = "https://github.com/graveland/rafiki.git?subdirectory=sdk%2Fpython&rev=v0.5.10" },
 ]
 
 [package.metadata.requires-dev]
