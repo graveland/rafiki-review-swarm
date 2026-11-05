@@ -1,6 +1,6 @@
 ---
 name: review
-description: Run a review-swarm review of a design doc, a squashed PR, the fixes pushed after a review, or a whole-repo audit of a project's checkout. Use when asked to audit or sweep a repository rather than one change, when a design doc has landed or before implementing a destructive or safety-bypassing path, when a PR is squashed and about to be marked ready or handed to a human reviewer, or when fixes have been pushed after a review and need re-judging.
+description: Run a review-swarm review of a design doc, a squashed PR, the fixes pushed after a review, or a whole-repo audit of a project's checkout. Use when asked to audit or sweep a repository rather than one change, when a design doc has landed or before implementing a destructive or safety-bypassing path, when a PR is squashed and about to be marked ready or handed to a human reviewer, or when fixes have been pushed after a review and need re-judging. For a single PR, the lighter `lite` stage (one gatherer, a panel forked from its reading, one consolidator) is the default; the full gather/review/verify-pr pipeline is for when a PR earns it.
 ---
 
 # review
@@ -59,9 +59,12 @@ change, the fundi panel seats fork its conversation per lens, a claude-kind seat
 reviews independently, and one consolidator annotates every finding. Its child
 grant is `--parallel` (default 6) plus the panel size plus one. Read its report's
 "Raised by" line before leaning on agreement: forked seats share one gatherer's
-reading, so their agreement is not independent corroboration. For an audit run it is `map`, then `find`, then `verify`, with the operator
-between `map` and `find` (see "Running an audit" below). Never start a
-stage with `review-swarm launch` from Bash: it spawns the stage with no parent, so
+reading, so their agreement is not independent corroboration.
+
+For an audit run `<stage>` is `map`, then `find`, then `verify`, with the operator
+between `map` and `find` (see "Running an audit" below).
+
+Never start a stage, `lite` included, with `review-swarm launch` from Bash: it spawns the stage with no parent, so
 its seats are orphaned in the cockpit and no settle reaches you, which leaves
 only a shell loop on `rafiki logs -f` to notice the stage ended. `launch` is for
 a human at a terminal.
