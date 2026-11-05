@@ -89,6 +89,13 @@ This file names the seats for the PR pipeline. `gather`, `finder`, `panel` and
   Default `false`.
 - `verify_claims`: `true` sends "checked: nothing" answers to verifiers.
   Default `false`.
+- `lite`: the seats of the `lite` stage, `{"gather": ..., "panel": [...],
+  "consolidate": ...}`. Optional; only `lite` reads it, and a project without it
+  cannot run `lite`. The gather seat must be fundi (the panel forks its
+  conversation). A fundi panel seat gets one forked cell per focus; a claude-kind
+  seat gets one independent whole-change cell. The consolidator forks the
+  gatherer when it is fundi and the pack fits its window, and reads the change
+  itself otherwise. Kinds are read from the live presets at run time.
 - `packet_exclude`: globs (`fnmatchcase`, so `*` crosses `/`) for changed files
   the packet leaves out whole, such as generated code. The change itself still
   reaches every seat through `packet/diff.patch`, and a range the gather seat

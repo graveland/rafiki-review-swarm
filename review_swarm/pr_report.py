@@ -237,6 +237,10 @@ def vote_label(vote):
         return "refuted"
     if r is False:
         return "upheld"
+    if vote.get("uncertain") is True:
+        # A lite consolidator's answer that the code does not settle: a verdict,
+        # not a missing vote, so it is named as one.
+        return "uncertain (the code does not settle it)"
     # Neither: the vote never arrived or did not carry a boolean. It is a verdict
     # the report shows, not one it drops.
     return "no verdict (the vote is missing or unparseable)"
@@ -377,7 +381,7 @@ def incomplete_section(rows, severities, claims):
     return lines
 
 
-def summarize(rows, severities):
+def summarize(rows, severities, *, refuted_shown=False):
     """The verdict line. It counts members, not just buckets: a bucket can hold
     several issues with different verdicts, so a bucket count alone would say
     nothing about how many findings are confirmed, contested or unresolved."""
@@ -394,10 +398,44 @@ def summarize(rows, severities):
             best = sev
     line = f"{', '.join(parts)}; highest confirmed severity {best or 'none'}."
     n_refuted = len(members_with(rows, "refuted", severities))
-    if n_refuted:
+    if n_refuted and not refuted_shown:
         line += (f" Not shown: {plural(n_refuted, 'refuted member', 'refuted members')} "
                  f"(kept in the run for calibration).")
     return line
+
+
+def with_delivery(rows, delivery):
+    """Rows whose members name each raising seat with its delivery: `fork` seats
+    reviewed the shared pack, `independent` ones read the code themselves. The
+    rows are copied; the run's records are never edited."""
+    out = []
+    for row in rows:
+        members = []
+        for m in members_of(row):
+            raised = m.get("raised_by") if isinstance(m.get("raised_by"), list) else []
+            members.append({**m, "raised_by": [f"{s} ({delivery.get(str(s), 'unknown')})" for s in raised]})
+        out.append({**row, "members": members})
+    return out
+
+
+def delivery_summary(rows, delivery):
+    """How the findings were raised, split by delivery. Fork seats share one
+    gatherer's reading, so their agreement is evidence given that pack, not
+    independent corroboration; only an independent seat checks the pack itself."""
+    both = fork_only = independent_only = 0
+    for row in rows:
+        for m in members_of(row):
+            kinds = {delivery.get(str(s).rsplit(" (", 1)[0], "unknown")
+                     for s in (m.get("raised_by") or [])}
+            if {"fork", "independent"} <= kinds:
+                both += 1
+            elif "independent" in kinds:
+                independent_only += 1
+            elif "fork" in kinds:
+                fork_only += 1
+    return (f"Raised by: {both} by forked and independent seats, {fork_only} by forked seats only "
+            f"(shared pack), {independent_only} by independent seats only. Forked seats' agreement "
+            f"is agreement given one gatherer's reading, not independent corroboration.")
 
 
 def triage_section(rows, severities):
@@ -634,13 +672,23 @@ def write_report(rdir: Path, out: Path) -> Path:
     radir = review_attempt_dir(rdir, vstate)
     mode = str(run.get("mode") or "")
 
+    lite = vstate.get("stage") == "lite"
+    if lite:
+        rows = with_delivery(rows, vstate.get("delivery") or {})
     lines = [f"# Review: {project_name(run)} {mode} {target_label(run)}", "",
-             summarize(rows, severities), ""]
+             summarize(rows, severities, refuted_shown=lite), ""]
+    if lite:
+        lines += [delivery_summary(rows, vstate.get("delivery") or {}), ""]
     # The order is fixed and the sections never move: a session re-reading a
     # report after a fix looks in the same place every time.
     lines += shown_section("Confirmed", rows, "confirmed", severities, show_reasoning=False)
     lines += shown_section("Contested", rows, "contested", severities, show_reasoning=True)
     lines += incomplete_section(rows, severities, claims)
+    if lite:
+        # One consolidator decides a lite run's refutations, so a wrong one has no
+        # second vote to expose it: every refuted finding is shown beside its
+        # refutation instead of being kept out of the report.
+        lines += shown_section("Refuted", rows, "refuted", severities, show_reasoning=True)
     if mode == "design":
         lines += questions_section(read_jsonl(radir / "questions.jsonl", "questions") if radir else [])
     if mode == "delta":

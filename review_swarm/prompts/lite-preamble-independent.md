@@ -1,0 +1,1 @@
+DELIVERY: INDEPENDENT. Nobody has gathered for you. Your working directory is the review run: `packet/intent.md` states the intent, {diff_line}`tree/` is the frozen tree after the change. Read the intent and the change first, then read what decides whether it is correct. "Your packet" below means what you read.

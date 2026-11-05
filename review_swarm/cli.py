@@ -7,6 +7,7 @@ from pathlib import Path
 from . import (
     analysis,
     pr_gather,
+    pr_lite,
     pr_review,
     pr_runs,
     pr_state,
@@ -23,7 +24,7 @@ from .sandbox import Sandbox, Target
 DEFAULT_REPO = "review-swarm"
 STAGES = {"map": stages.stage_map, "find": stages.stage_find, "verify": stages.stage_verify,
           "gather": pr_gather.stage_gather, "review": pr_review.stage_review,
-          "verify-pr": pr_verify.stage_verify_pr}
+          "verify-pr": pr_verify.stage_verify_pr, "lite": pr_lite.stage_lite}
 
 
 def add_stage_parsers(sub):
@@ -72,6 +73,16 @@ def add_stage_parsers(sub):
         sp.add_argument("--model", help="override the seat's model (the preset still fixes prompt, tools, budget); recorded on the attempt")
         sp.add_argument("--timeout", type=int, default=1800, help="per-child seconds")
         sp.add_argument("--parallel", type=int, default=stages.FIND_CAP, help="workers in flight at once")
+
+    lt = sub.add_parser("lite", help="stage: one gatherer, a panel forked from its transcript, one consolidator")
+    lt.add_argument("run")
+    lt.add_argument("--focus", type=lambda v: [x.strip() for x in v.split(",") if x.strip()],
+                    help="comma-separated focuses to run instead of all (`general` plus every resolved lens); "
+                         "for experiments")
+    lt.add_argument("--timeout", type=int, default=pr_lite.DEFAULT_TIMEOUT, help="per-child seconds")
+    lt.add_argument("--parallel", type=int, default=pr_lite.DEFAULT_PARALLEL,
+                    help="fork cells in flight at once (kept low: cells of one seat share a provider cache "
+                         "bucket, which overflows to cold machines under a high request rate)")
 
     # Not a stage: a read of finished runs, so no seat and no daemon. It is defined
     # here because this builder is the one parser both entry points share, so the
@@ -585,6 +596,13 @@ def launch(target, home, args):
     # The stage keeps --parallel workers in flight; without a grant the daemon's
     # default live-children cap would refuse the rest of every batch.
     max_children = args.max_children or max(getattr(parsed, "parallel", stages.FIND_CAP), getattr(parsed, "mappers", 0))
+    if parsed.stage == "lite" and not args.max_children:
+        # Lite runs its independent cells (one per claude-kind panel seat) beside
+        # --parallel fork cells. Kinds are only known to the daemon, so every
+        # panel seat is counted as independent: a grant too large is harmless, one
+        # too small refuses a spawn mid-run.
+        rdir, _ = home.load_run(parsed.run)
+        max_children = parsed.parallel + len(pr_lite.lite_config(rdir)["panel"]) + 1
     rk = target.client()
     cid = rk.spawn_script(f"review-{parsed.stage}-{parsed.run}", cwd=home.data, repo=args.repo, script="review",
                           args=["--data", str(home.data)] + rest, max_cost=args.max_cost, max_children=max_children,

@@ -517,22 +517,12 @@ def gather_context(rk, rdir, run, packet_files, instruction, seat):
             [str(n) for n in list_field(rdir, seat, doc, "process_notes")])
 
 
-def build_packet(rk, home, rdir, *, lens_generic):
-    """Write packet/ in the fixed order the seats depend on, and return the
-    manifest. Byte-identical for identical inputs: nothing here reads a clock,
-    a network answer that is not sorted, or an unordered mapping.
-
-    Refuses to write unless the run is still gathering: packet/ is the record
-    every finished attempt points at, so a done or aborted run is never
-    rebuilt in place. A new packet needs a new run."""
-    rdir = Path(rdir)
-    run = json.loads((rdir / "run.json").read_text())
-    state = pr_state.load_state(rdir)
-    if state.get("status") != "gathering":
-        raise Fail(f"run {run['run_id']} is {state.get('status')}; a packet is only built while a run is "
-                   f"gathering. Confirm or abort this run, or start a new one: packet/ is the packet its "
-                   f"review and verify attempts were run against, so it is never rewritten")
-    pjson = pr_json(rdir)
+def packet_basics(home, rdir, run, lens_dir, *, lens_generic):
+    """Write the part of packet/ every PR stage shares: intent.md, diff.patch
+    (pr/delta), threads.md and lenses.json, and return (intent, diff, the
+    selected lenses). The lens set is resolved here and nowhere else: the
+    project's layers filtered by mode and by triggers against the diff, so two
+    stages reviewing one run see the same lenses."""
     mode = run["mode"]
     packet = rdir / "packet"
     packet.mkdir(exist_ok=True)
@@ -564,11 +554,6 @@ def build_packet(rk, home, rdir, *, lens_generic):
     for note in gh_errors:
         pr_state.append_friction(rdir, {"kind": "gh-error", "note": note})
 
-    if mode == "delta":
-        (packet / "prior.json").write_text(
-            json.dumps({"verdicts": prior_rows(home, run)}, indent=1, sort_keys=True) + "\n")
-
-    lens_dir = pjson.get("lens_dir")
     # The gold sets stay in the project, not in the run: the snapshot is readable
     # by every seat (cwd is the run directory), and gold is the calibration
     # answer key. `catches` is validated against the slugs a repo lens claims.
@@ -579,6 +564,32 @@ def build_packet(rk, home, rdir, *, lens_generic):
     (packet / "lenses.json").write_text(json.dumps({"lenses": [
         {"name": l.name, "category": l.category, "prompt": l.prompt, "always": l.triggers == "always"}
         for l in selected]}, indent=1, sort_keys=True) + "\n")
+    return intent, diff, selected
+
+
+def build_packet(rk, home, rdir, *, lens_generic):
+    """Write packet/ in the fixed order the seats depend on, and return the
+    manifest. Byte-identical for identical inputs: nothing here reads a clock,
+    a network answer that is not sorted, or an unordered mapping.
+
+    Refuses to write unless the run is still gathering: packet/ is the record
+    every finished attempt points at, so a done or aborted run is never
+    rebuilt in place. A new packet needs a new run."""
+    rdir = Path(rdir)
+    run = json.loads((rdir / "run.json").read_text())
+    state = pr_state.load_state(rdir)
+    if state.get("status") != "gathering":
+        raise Fail(f"run {run['run_id']} is {state.get('status')}; a packet is only built while a run is "
+                   f"gathering. Confirm or abort this run, or start a new one: packet/ is the packet its "
+                   f"review and verify attempts were run against, so it is never rewritten")
+    pjson = pr_json(rdir)
+    mode = run["mode"]
+    packet = rdir / "packet"
+    intent, _diff, selected = packet_basics(home, rdir, run, pjson.get("lens_dir"), lens_generic=lens_generic)
+
+    if mode == "delta":
+        (packet / "prior.json").write_text(
+            json.dumps({"verdicts": prior_rows(home, run)}, indent=1, sort_keys=True) + "\n")
 
     # What may go into the packet, and what each refusal is recorded as. A path
     # with a glob character cannot be pre-filled (the daemon reads it as a glob

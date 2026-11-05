@@ -1,0 +1,19 @@
+{
+  "name": "review-lite:panel-2",
+  "description": "lite panel seat 2: forks the gather pack, one cell per focus (review-swarm)",
+  "kind": "fundi",
+  "model": "gpt/gpt-astra-latest",
+  "tools": [
+    "read",
+    "glob",
+    "grep",
+    "ls"
+  ],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-panel.md}}",
+  "max_cost": 10,
+  "max_depth": 0,
+  "max_children": 0
+}

@@ -202,6 +202,26 @@ uv run review-swarm report <run-id> --out review.md
 `--mode delta --pr <number> --since <run-id>` re-judges an earlier review's
 findings against the fixes.
 
+### The lite tier: one gather, a forked panel, one consolidator
+
+```
+uv run review-swarm pr new <project> --mode pr --pr <number>
+uv run review-swarm launch -- lite <run-id>
+uv run review-swarm report <run-id> --out review.md
+```
+
+`lite` replaces gather, review and verify-pr with one stage for `pr` and `design`
+runs. A gatherer reads the change and the code that decides it into its own
+conversation; every fundi panel seat then forks that conversation once per focus
+(`general` plus every lens the run resolves), so the exploration is paid once and
+each extra lens costs roughly its own answer turns. A claude-kind panel seat cannot
+be forked to: it reviews the whole change independently, every lens on its
+checklist, and is the control against what the gatherer never read. One
+consolidator then marks every finding confirmed, refuted or uncertain; nothing is
+dropped, and the report shows refuted findings beside their refutation. Seats come
+from the `lite` section of the project's `pr.json`. `launch` grants
+`--max-children` of `--parallel` plus the panel size plus one unless you pass it.
+
 ### A whole repository
 
 With `"freeze": false`, put the target checkout at the commit to review (clean),

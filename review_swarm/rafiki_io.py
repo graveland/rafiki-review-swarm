@@ -112,6 +112,21 @@ class Rafiki:
                 raise AtCap(f"spawn {name}: {e}") from e
             raise Fail(f"spawn {name}: {e}") from e
 
+    def spawn_fork(self, name, *, preset, source, cwd, prompt, labels):
+        """Spawn a fundi seat as a fork of `source`'s last completed turn and
+        send it `prompt`. The fork inherits the source's history by reference,
+        so every fork of one source starts from the same bytes; the caller
+        decides which seats are forks (only a fundi seat can be forked to, and
+        the daemon refuses any other kind). Returns (child_id, session_id)."""
+        try:
+            cid = self.c.spawn(name=name, kind="fundi", cwd=str(cwd), preset=preset, labels=labels,
+                               prompt=prompt, fork_from={"child_id": source})
+            return cid, self.c.get(cid).session_id
+        except ConnectError as e:
+            if e.reason == "at_capacity":
+                raise AtCap(f"spawn {name}: {e}") from e
+            raise Fail(f"spawn {name}: {e}") from e
+
     def spawn_script(self, name, *, cwd, repo, script, args, labels, max_cost=None, max_children=None):
         try:
             return self.c.spawn(name=name, kind="script", cwd=str(cwd), labels=labels, max_cost=max_cost,

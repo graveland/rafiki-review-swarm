@@ -53,7 +53,13 @@ pymodule_start(repo="review-swarm", script="review",
 ```
 
 For a change run, `<stage>` is `gather`, `review` or `verify-pr`, run in that
-order. For an audit run it is `map`, then `find`, then `verify`, with the operator
+order, or the single `lite` stage for a `pr` or `design` run whose project's
+`pr.json` has a `lite` section. Prefer `lite` for one PR: one gatherer reads the
+change, the fundi panel seats fork its conversation per lens, a claude-kind seat
+reviews independently, and one consolidator annotates every finding. Its child
+grant is `--parallel` (default 6) plus the panel size plus one. Read its report's
+"Raised by" line before leaning on agreement: forked seats share one gatherer's
+reading, so their agreement is not independent corroboration. For an audit run it is `map`, then `find`, then `verify`, with the operator
 between `map` and `find` (see "Running an audit" below). Never start a
 stage with `review-swarm launch` from Bash: it spawns the stage with no parent, so
 its seats are orphaned in the cockpit and no settle reaches you, which leaves

@@ -1,0 +1,19 @@
+{
+  "name": "review-lite:gather",
+  "description": "lite gather seat: reads the change and what decides it into its own transcript, which the panel forks; never reviews (review-swarm)",
+  "kind": "fundi",
+  "model": "openrouter/~deepseek/deepseek-flash-latest",
+  "tools": [
+    "read",
+    "glob",
+    "grep",
+    "ls"
+  ],
+  "skills": [],
+  "mcp_servers": [],
+  "context_files": false,
+  "append_system_prompt": "{{seat-lite-gather.md}}",
+  "max_cost": 3,
+  "max_depth": 0,
+  "max_children": 0
+}

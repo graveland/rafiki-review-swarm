@@ -18,6 +18,7 @@ class FakeRafiki:
     def __init__(self):
         self.spawns: list[dict] = []
         self.seat_spawns: list[dict] = []
+        self.fork_spawns: list[dict] = []
         self.presets: dict[str, dict] = {}
         self.answers: dict[str, str] = {}
         self.prompts: list[dict] = []
@@ -59,6 +60,21 @@ class FakeRafiki:
                                  "labels": dict(labels or {}), "model": model,
                                  "child_id": cid, "session_id": sid})
         return cid, sid, ("read-list" if spec.get("kind") == "claude" else "prefill")
+
+    def spawn_fork(self, name, *, preset, source, cwd, prompt, labels):
+        """A fork of `source`: recorded with the source it borrows, so a test
+        can check that every fork names the gatherer and that no fork was
+        spawned before the gatherer settled."""
+        spec = self.presets.get(preset)
+        if spec is None:
+            raise Fail(f"preset {preset!r}: not found (known: {', '.join(sorted(self.presets))})")
+        if (spec.get("kind") or "fundi") != "fundi":
+            raise Fail(f"spawn {name}: a fork runs as kind=fundi")
+        cid, sid = self._accept(name, labels)
+        self.fork_spawns.append({"name": name, "preset": preset, "source": source, "cwd": str(cwd),
+                                 "prompt": prompt, "labels": dict(labels or {}),
+                                 "child_id": cid, "session_id": sid})
+        return cid, sid
 
     def get_preset(self, name):
         if name not in self.presets:

@@ -1,0 +1,10 @@
+{
+  "name": "review-lite:panel-1",
+  "description": "lite panel seat 1: independent whole-change review, every lens on its checklist (review-swarm)",
+  "kind": "claude",
+  "model": "anthropic/claude-opus-5-5",
+  "append_system_prompt": "{{seat-common.md}}\n\n{{seat-pr-panel.md}}",
+  "max_cost": 20,
+  "max_depth": 0,
+  "max_children": 0
+}
