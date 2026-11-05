@@ -1,8 +1,8 @@
 {
   "name": "review-lite:panel-3",
-  "description": "lite panel seat 3: forks the gather pack, one cell per focus; the cheap-seat evaluation, upstream pinned so sibling cells share a cache (review-swarm)",
+  "description": "lite panel seat 3: forks the gather pack, one cell per focus; the cheap-seat evaluation (review-swarm)",
   "kind": "fundi",
-  "model": "openrouter/~deepseek/deepseek-flash-latest[only=deepseek]",
+  "model": "openrouter/~deepseek/deepseek-flash-latest",
   "tools": [
     "read",
     "glob",
