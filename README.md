@@ -21,7 +21,7 @@ one tree in rafiki's cockpit, bounded by one budget.
 | engine | this repository: the stages, the shipped lenses and seat presets, the `review-swarm` CLI | upstream; your home pins a tag of it and never edits it |
 | home | your git repository: `projects/<name>/`, optional `lenses/`, `scripts/review.py`, `pyproject.toml` pinning the engine | you write it; a stage only reads it |
 | data dir | an absolute directory outside every checkout: `runs/`, `builds/` | stages write it, and nothing else does |
-| rafiki source | the home, registered with `rafiki python repo add` | rafiki clones it onto each executor and builds its venv there, which installs the pinned engine |
+| rafiki source | the home, registered with `rafiki repo add` | rafiki clones it onto each executor and builds its venv there, which installs the pinned engine |
 | seats | rafiki presets (`review-pr:*`, `review-pr-claude:*`, `review-audit-claude:*`, ...) naming each reviewer's kind, model and budget | shipped in the engine, put on the daemon by `review-swarm presets sync` |
 
 The engine is installed in two places, for two purposes. rafiki installs it on
@@ -109,14 +109,14 @@ fetch.
 ## 2. Register the home with rafiki
 
 ```
-rafiki python repo add review-swarm https://git.example.com/you/my-review-home.git --ref main
+rafiki repo add review-swarm https://git.example.com/you/my-review-home.git --ref main
 ```
 
 `review-swarm` is the source name the CLI uses by default (`launch --repo`
 overrides it). Check the executor built the home's venv and can run the shim:
 
 ```
-rafiki python repo list
+rafiki repo list
 ```
 
 then, from an agent with rafiki's MCP tools, `pymodule_run(repo="review-swarm",
@@ -126,7 +126,7 @@ required.
 After every push to the home, refresh the executor's copy:
 
 ```
-rafiki python repo refresh review-swarm
+rafiki repo refresh review-swarm
 ```
 
 rafiki caches a source by name. If you re-register a name with a different URL,
@@ -251,7 +251,7 @@ Bump the tag in the home's `pyproject.toml`, then:
 ```
 uv lock --upgrade-package review-swarm && uv sync
 git commit -am "pin review-swarm vX.Y.Z" && git push
-rafiki python repo refresh review-swarm
+rafiki repo refresh review-swarm
 uv run review-swarm presets sync
 ```
 
