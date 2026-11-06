@@ -21,13 +21,15 @@ descendants), so every child is stopped as soon as it is collected and the
 gatherer is stopped once it has settled: a fork reads its source's stored
 nodes, never the live child. Fork cells are queued seat-major with one warm
 cell per seat first, because a provider's prefix cache only serves requests
-that arrive after the first one carrying the prefix has landed.
+that arrive after the first one carrying the prefix has completed.
 """
 
 import json
 import os
 import threading
 import time
+
+from rafiki import ConnectError
 
 from . import pr_gather, pr_review, pr_state, pr_verify
 from .analysis import hallucination_checks
@@ -580,7 +582,9 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
     def next_fork():
         """Seat-major: the earliest seat whose cells may go. A seat's warm cell
         goes first; its other cells wait until the warm cell's first turn has
-        landed, so they arrive at a provider cache that already holds the pack."""
+        completed, so they arrive at a provider cache that already holds the
+        pack (the ChatGPT backend serves a prefix only once the request that
+        carried it is done; one still streaming leaves every sibling cold)."""
         for s in usable_seats:
             q = queues[s]
             if not q:
@@ -697,12 +701,19 @@ def write_manifest(rdir, manifest):
 
 
 def turn_landed(rk, cell):
-    """Whether a cell's first model turn has landed: the daemon prices a turn
-    when it completes, so a reported cost above zero means the request carrying
-    the pack has been answered and its prefix is in the provider's cache."""
-    info = rk.child_info(cell["child_id"])
-    cost = info.get("cost_usd")
-    return isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost > 0
+    """Whether a cell's first model turn has COMPLETED: its export holds an
+    assistant turn with reported output. Cost is no signal: it turns positive
+    while the turn is still streaming, before a provider that caches on
+    completion (the ChatGPT backend) can serve the prefix. A fork's export holds
+    only its own turns, so this poll stays small however large the pack is."""
+    try:
+        conv = rk.export(cell["child_id"])
+    except ConnectError as e:
+        if e.code == "not_found":
+            return False  # nothing captured yet
+        raise
+    return any(t.get("role") == "assistant" and t.get("output_tokens") is not None
+               for t in (conv or {}).get("turns") or [])
 
 
 def collect(rk, adir, rdir, tree, mode, cell, info, conv):

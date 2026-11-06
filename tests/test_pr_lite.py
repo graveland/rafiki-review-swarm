@@ -54,17 +54,22 @@ def consolidate_answer(ids, verdicts):
 
 
 class LiteFake(FakeRafiki):
-    """FakeRafiki plus an event log in spawn/stop order, per-child costs (a cell
-    whose first turn has not landed reports 0) and an optional model catalog."""
+    """FakeRafiki plus an event log in spawn/stop order and an optional model
+    catalog, with the two signals a real cell gives kept apart: its cost is
+    positive from its first poll (a streaming turn is already priced), while its
+    export holds a completed assistant turn only once `turn_after_polls` polls
+    have passed, or never for a `no_turn` cell (one that died before answering).
+    `busy_polls` keeps a cell running for that many polls."""
 
     def __init__(self):
         super().__init__()
         self.events: list[tuple] = []
-        self.costs: dict[str, float] = {}
-        self.cost_after_polls: dict[str, int] = {}
+        self.turn_after_polls: dict[str, int] = {}
+        self.no_turn: set[str] = set()
         self.polls: dict[str, int] = {}
         self.busy_polls: dict[str, int] = {}
         self.catalog: list[dict] | None = None
+
 
     def spawn_seat(self, name, **kw):
         cid, sid, delivery = super().spawn_seat(name, **kw)
@@ -84,18 +89,20 @@ class LiteFake(FakeRafiki):
         info = super().child_info(child_id)
         self.polls[child_id] = self.polls.get(child_id, 0) + 1
         name = self._children.get(child_id, {}).get("name", "")
-        cost = 0.01
-        for prefix, c in self.costs.items():
-            if name.startswith(prefix):
-                cost = c
-        for prefix, n in self.cost_after_polls.items():
-            if name.startswith(prefix) and self.polls[child_id] <= n:
-                cost = 0.0
         for prefix, n in self.busy_polls.items():
             if name.startswith(prefix) and self.polls[child_id] <= n:
                 info["status"] = "running"
-        info["cost_usd"] = cost
+        info["cost_usd"] = 0.01
         return info
+
+    def export(self, child_id):
+        name = self._children.get(child_id, {}).get("name", "")
+        if any(name.startswith(p) for p in self.no_turn):
+            return {"conversation_id": "conv-" + child_id, "turns": []}
+        for prefix, n in self.turn_after_polls.items():
+            if name.startswith(prefix) and self.polls.get(child_id, 0) <= n:
+                return {"conversation_id": "conv-" + child_id, "turns": []}
+        return super().export(child_id)
 
     def list_models(self):
         return self.catalog or []
@@ -254,9 +261,10 @@ def test_the_stage_gathers_forks_and_consolidates(lite):
 
 def test_fork_cells_wait_for_their_seats_warm_cell(lite):
     rk = lite.rk
-    # The warm cell (the seat's general cell) is still running for its first
-    # polls and reports no cost for the first three: its first turn has not landed.
-    rk.cost_after_polls[lite.prefix + "panel-2--general"] = 3
+    # The warm cell (the seat's general cell) is priced from its first poll but
+    # its first turn completes only after the third, and it keeps running to the
+    # tenth: cost must not open the gate, the completed turn must.
+    rk.turn_after_polls[lite.prefix + "panel-2--general"] = 3
     rk.busy_polls[lite.prefix + "panel-2--general"] = 10
     seen = []
     orig = rk.spawn_fork
@@ -270,9 +278,9 @@ def test_fork_cells_wait_for_their_seats_warm_cell(lite):
     run_stage(lite, parallel=4)
     panel = [(n, p) for n, p in seen if "panel-2" in n]
     assert panel[0][0].endswith("panel-2--general")
-    # Its siblings were spawned only once a poll saw a cost above zero (the 4th),
-    # and while the warm cell was still running: the gate is the first turn, not
-    # the whole cell.
+    # Its siblings were spawned only once its first turn had completed (from the
+    # 4th poll), and while the warm cell was still running: the gate is the first
+    # turn, not the whole cell, and not its cost.
     assert len(panel) == 3 and all(p >= 4 for _, p in panel[1:])
     assert all(p <= 10 for _, p in panel[1:])
 
@@ -285,7 +293,7 @@ def test_a_warm_cell_that_never_lands_stops_its_seat(lite):
     rk.answers[lite.prefix + "panel-2--general"] = ""
     rk.answers[lite.prefix + "panel-2--always"] = CELL_HIT
     rk.answers[lite.prefix + "panel-2--paths"] = CELL_HIT
-    rk.costs[lite.prefix + "panel-2--general"] = 0.0
+    rk.no_turn.add(lite.prefix + "panel-2--general")
     run_stage(lite)
     forks = [e for e in rk.events if e[0] == "fork" and "panel-2" in e[1]]
     assert [e[1].rsplit("-", 1)[-1] for e in forks] == ["general"]
@@ -353,3 +361,4 @@ def test_a_cap_refusal_names_the_grant_needed(lite):
     with pytest.raises(Fail, match="max_children >= 3"):
         run_stage(lite)
     assert pr_state.load_state(lite.rdir)["status"] == "lite-failed"
+
