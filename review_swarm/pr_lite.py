@@ -425,6 +425,8 @@ def stage_lite(rk, home, args):
 
 
 def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawned):
+    started = time.time()
+    phases = {}  # name -> (start, end), wall clock; per-child metrics cannot show overlap
     stop = StopWatch(rk)
     intent, _diff, selected = pr_gather.packet_basics(home, rdir, run, cfg["lens_dir"], lens_generic=LENSES)
     lenses = [{"name": l.name, "prompt": l.prompt} for l in selected]
@@ -533,6 +535,7 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
         answer = final_answer(conv) if conv else None
         (gdir / "raw.md").write_text(answer or "")
         rk.stop(gcid)  # forks read its stored nodes; the live child only holds a slot
+        phases["gather"] = (gather_started, time.time())
         pack = pack_tokens(conv)
         if not answer:
             friction(rdir, gather_seat, "gather-failed",
@@ -647,6 +650,7 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
             time.sleep(POLL)
     update_warm()
 
+    phases["cells"] = (phases.get("gather", (started, started))[1], time.time())
     if not records:
         raise Fail(f"no panel cell answered; see {adir} and friction.jsonl")
 
@@ -669,9 +673,11 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
     votes = {}
     if clusters:
         stop.check()
+        consolidate_started = time.time()
         votes = consolidate(rk, rdir, run, vdir, tree, cseat, specs, gcid if gather_ok else None,
                             consolidation_input(clusters, tree, delivery_of), usable, pack, timeout,
                             {**labels_base, "review/seat": cseat, "review/cell": "consolidate"}, spawned)
+        phases["consolidate"] = (consolidate_started, time.time())
     rows = verdict_rows(clusters, votes, cseat)
     pr_review.write_jsonl(vdir / "verdicts.jsonl", rows)
     pr_review.write_jsonl(vdir / "claims.jsonl", [])
@@ -683,6 +689,12 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
         {"stage": STAGE, "source": str((adir / "candidates.jsonl").relative_to(rdir)), "review": adir.name,
          "consolidator": cseat, "delivery": delivery_of}, indent=1, sort_keys=True) + "\n")
 
+    seat_of = {k: c["seat"] for k, c in cells.items()}
+    seat_of.update({"gather": cfg["gather"], "consolidate": cseat})
+    stats = lite_stats(adir, vdir, specs, seat_of, delivery_of, phases, started)
+    (adir / "stats.json").write_text(json.dumps(stats, indent=1, sort_keys=True) + "\n")
+    print(stats_table(adir.name, stats))
+
     st = pr_state.load_state(rdir)
     st["status"] = "done"
     st["lite"] = {"review": adir.name, "verify": vdir.name, "cells": len(records), "candidates": len(candidates),
@@ -693,7 +705,107 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
     print(f"lite: {len(records)} cells answered, {len(candidates)} findings in {len(rows)} buckets; "
           + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     return {"stage": STAGE, "run": run["run_id"], "review": adir.name, "verify": vdir.name,
-            "cells": len(records), "candidates": len(candidates), "pack_tokens": pack, **counts}
+            "cells": len(records), "candidates": len(candidates), "pack_tokens": pack, **counts,
+            "stats": stats_summary(stats)}
+
+
+def _num(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def lite_stats(adir, vdir, specs, seat_of, delivery_of, phases, started):
+    """Cost, cache and timing per seat, from the child.json every collected
+    child wrote, plus the stage's own phase clock. A number a child did not
+    report is counted in `*_unreported`, never summed as zero. Cache WRITES are
+    not here: the export the metrics are read from does not carry them, so
+    `cache_pct` is cache reads over uncached input plus cache reads, and a seat
+    that writes its cache (a claude seat's own turns) reads higher than its
+    provider's own hit rate."""
+    paths = sorted(adir.glob("*/child.json")) + sorted(vdir.glob("consolidate/child.json"))
+    seats = {}
+    for p in paths:
+        try:
+            m = json.loads(p.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        # The stage knows which seat each child directory is; a child's preset
+        # label is only the fallback for a directory it did not name.
+        seat = str(seat_of.get(p.parent.name) or m.get("preset") or p.parent.name)
+        role = "consolidate" if p.parent.name == "consolidate" else "gather" if p.parent.name == "gather" else "cell"
+        row = seats.setdefault(seat, {
+            "seat": seat, "model": (specs.get(seat) or {}).get("model") or m.get("model"),
+            "delivery": "-" if role != "cell" else delivery_of.get(seat, "-"),
+            "children": 0, "turns": 0, "input_tokens": 0, "cache_read_tokens": 0, "output_tokens": 0,
+            "tokens_unreported": 0, "cost_usd": 0.0, "cost_unreported": 0, "wall_s": []})
+        row["children"] += 1
+        row["turns"] += int(m.get("model_turns") or 0)
+        if _num(m.get("input_tokens")) is None:
+            row["tokens_unreported"] += 1
+        else:
+            row["input_tokens"] += m["input_tokens"]
+            row["cache_read_tokens"] += _num(m.get("cache_read_tokens")) or 0
+            row["output_tokens"] += _num(m.get("output_tokens")) or 0
+        if _num(m.get("cost_usd")) is None:
+            row["cost_unreported"] += 1
+        else:
+            row["cost_usd"] += m["cost_usd"]
+        if _num(m.get("wall_s")) is not None:
+            row["wall_s"].append(m["wall_s"])
+    for row in seats.values():
+        prompt = row["input_tokens"] + row["cache_read_tokens"]
+        row["cache_pct"] = round(100 * row["cache_read_tokens"] / prompt) if prompt else None
+        walls = sorted(row.pop("wall_s"))
+        row["wall_p50_s"] = walls[len(walls) // 2] if walls else None
+        row["wall_max_s"] = walls[-1] if walls else None
+        row["cost_usd"] = round(row["cost_usd"], 4)
+    prompt = sum(r["input_tokens"] + r["cache_read_tokens"] for r in seats.values())
+    return {
+        "wall_s": round(time.time() - started, 1),
+        "phases_s": {k: round(e - s, 1) for k, (s, e) in phases.items()},
+        "cost_usd": round(sum(r["cost_usd"] for r in seats.values()), 4),
+        "cost_unreported": sum(r["cost_unreported"] for r in seats.values()),
+        "cache_pct": round(100 * sum(r["cache_read_tokens"] for r in seats.values()) / prompt) if prompt else None,
+        "seats": [seats[k] for k in sorted(seats)],
+    }
+
+
+def _k(n):
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def _secs(v):
+    if v is None:
+        return "-"
+    v = round(v)
+    return f"{v // 60}m{v % 60:02d}s" if v >= 60 else f"{v}s"
+
+
+def stats_table(attempt, stats):
+    """The stats as the plain-text table the stage prints when it finishes."""
+    phases = " · ".join(f"{k} {_secs(v)}" for k, v in stats["phases_s"].items())
+    unrep = f" (+{stats['cost_unreported']} unreported)" if stats["cost_unreported"] else ""
+    cache = "-" if stats["cache_pct"] is None else f"{stats['cache_pct']}%"
+    title = f"lite {attempt}: {_secs(stats['wall_s'])} ({phases}), ${stats['cost_usd']:.2f}{unrep}, cache {cache}"
+    header = (f"{'seat':26} {'deliv':11} {'n':>3} {'turns':>5} {'uncached':>9} {'cache_rd':>9} {'cache':>5} "
+              f"{'out':>7} {'cost':>7} {'wall p50/max':>13}")
+    lines = [title, header]
+    for r in stats["seats"]:
+        pct = "-" if r["cache_pct"] is None else f"{r['cache_pct']}%"
+        lines.append(f"{r['seat']:26} {r['delivery']:11} {r['children']:>3} {r['turns']:>5} "
+                     f"{_k(r['input_tokens']):>9} {_k(r['cache_read_tokens']):>9} {pct:>5} "
+                     f"{_k(r['output_tokens']):>7} {'$' + format(r['cost_usd'], '.2f'):>7} "
+                     f"{_secs(r['wall_p50_s']) + '/' + _secs(r['wall_max_s']):>13}")
+    return "\n".join(lines)
+
+
+def stats_summary(stats):
+    """The part of the stats that rides the stage's result: small enough for
+    the result cap whatever the panel size, the full record is stats.json."""
+    return {"wall_s": stats["wall_s"], "phases_s": stats["phases_s"], "cost_usd": stats["cost_usd"],
+            "cost_unreported": stats["cost_unreported"], "cache_pct": stats["cache_pct"],
+            "seats": {r["seat"]: {"n": r["children"], "cache_pct": r["cache_pct"],
+                                  "cost_usd": round(r["cost_usd"], 3), "wall_max_s": r["wall_max_s"]}
+                      for r in stats["seats"]}}
 
 
 def write_manifest(rdir, manifest):

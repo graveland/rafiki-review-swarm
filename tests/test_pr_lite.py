@@ -362,3 +362,38 @@ def test_a_cap_refusal_names_the_grant_needed(lite):
         run_stage(lite)
     assert pr_state.load_state(lite.rdir)["status"] == "lite-failed"
 
+
+
+def test_the_stage_reports_cost_cache_and_timing(lite, capsys):
+    """stats.json holds every seat with its cost, cache and wall time; the same
+    numbers print as a table and ride the result, small enough for its cap."""
+    out = run_stage(lite)
+    adir = next(lite.rdir.glob("review/*"))
+    stats = json.loads((adir / "stats.json").read_text())
+    seats = {r["seat"]: r for r in stats["seats"]}
+    assert set(seats) == {"review-lite:gather", "review-lite:panel-1", "review-lite:panel-2",
+                          "review-lite:consolidate"}
+    p2 = seats["review-lite:panel-2"]
+    assert p2["delivery"] == "fork" and p2["children"] == 3
+    assert p2["cost_usd"] == pytest.approx(0.03) and p2["cost_unreported"] == 0
+    assert p2["input_tokens"] == 30 and p2["cache_pct"] == 0
+    assert set(stats["phases_s"]) >= {"gather", "cells"}
+    assert stats["cost_usd"] == pytest.approx(sum(r["cost_usd"] for r in stats["seats"]))
+    assert f"lite {adir.name}:" in capsys.readouterr().out
+    assert out["stats"]["seats"]["review-lite:panel-2"]["n"] == 3
+    assert len(json.dumps(out["stats"])) < 4096
+
+
+def test_an_unreported_cost_is_counted_not_summed_as_zero(tmp_path):
+    adir, vdir = tmp_path / "review" / "01", tmp_path / "verify" / "01"
+    for name, cost in (("a", 0.5), ("b", None)):
+        (adir / name).mkdir(parents=True)
+        (adir / name / "child.json").write_text(json.dumps(
+            {"preset": "s:x", "cost_usd": cost, "input_tokens": 100, "cache_read_tokens": 300,
+             "output_tokens": 5, "model_turns": 1, "wall_s": 2.0}))
+    vdir.mkdir(parents=True)
+    stats = pr_lite.lite_stats(adir, vdir, {}, {"a": "s:x"}, {"s:x": "fork"}, {}, 0)
+    row = stats["seats"][0]
+    assert row["cost_usd"] == 0.5 and row["cost_unreported"] == 1 and stats["cost_unreported"] == 1
+    assert row["cache_pct"] == 75
+    assert "+1 unreported" in pr_lite.stats_table("01", stats)
