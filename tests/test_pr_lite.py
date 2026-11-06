@@ -55,21 +55,14 @@ def consolidate_answer(ids, verdicts):
 
 class LiteFake(FakeRafiki):
     """FakeRafiki plus an event log in spawn/stop order and an optional model
-    catalog, with the two signals a real cell gives kept apart: its cost is
-    positive from its first poll (a streaming turn is already priced), while its
-    export holds a completed assistant turn only once `turn_after_polls` polls
-    have passed, or never for a `no_turn` cell (one that died before answering).
-    `busy_polls` keeps a cell running for that many polls."""
+    catalog. `busy_polls` keeps a child running for that many polls."""
 
     def __init__(self):
         super().__init__()
         self.events: list[tuple] = []
-        self.turn_after_polls: dict[str, int] = {}
-        self.no_turn: set[str] = set()
         self.polls: dict[str, int] = {}
         self.busy_polls: dict[str, int] = {}
         self.catalog: list[dict] | None = None
-
 
     def spawn_seat(self, name, **kw):
         cid, sid, delivery = super().spawn_seat(name, **kw)
@@ -94,15 +87,6 @@ class LiteFake(FakeRafiki):
                 info["status"] = "running"
         info["cost_usd"] = 0.01
         return info
-
-    def export(self, child_id):
-        name = self._children.get(child_id, {}).get("name", "")
-        if any(name.startswith(p) for p in self.no_turn):
-            return {"conversation_id": "conv-" + child_id, "turns": []}
-        for prefix, n in self.turn_after_polls.items():
-            if name.startswith(prefix) and self.polls.get(child_id, 0) <= n:
-                return {"conversation_id": "conv-" + child_id, "turns": []}
-        return super().export(child_id)
 
     def list_models(self):
         return self.catalog or []
@@ -240,7 +224,8 @@ def test_the_stage_gathers_forks_and_consolidates(lite):
     claude = next(s for s in rk.seat_spawns if s["preset"] == "review-lite:panel-1")
     assert claude["packet_files"] == ["packet/intent.md", "packet/diff.patch"]
     assert "DELIVERY: INDEPENDENT" in claude["instruction"]
-    fork_prompts = [s["prompt"] for s in rk.fork_spawns if s["preset"] == "review-lite:panel-2"]
+    fork_prompts = [s["prompt"] for s in rk.fork_spawns
+                    if s["preset"] == "review-lite:panel-2" and not s["name"].endswith("--warm")]
     assert fork_prompts and all(p.startswith("DELIVERY: SHARED PACK") for p in fork_prompts)
 
     vdir = next(rdir.glob("verify/*"))
@@ -259,44 +244,52 @@ def test_the_stage_gathers_forks_and_consolidates(lite):
     assert "not independent corroboration" in report
 
 
-def test_fork_cells_wait_for_their_seats_warm_cell(lite):
+def test_a_seat_warms_with_a_throwaway_fork_before_any_cell(lite):
+    """Each fork seat first forks a throwaway that asks for one word, so the
+    cache entry it leaves ends at the pack; none of the seat's real cells,
+    general included, is spawned until that warm fork has finished."""
     rk = lite.rk
-    # The warm cell (the seat's general cell) is priced from its first poll but
-    # its first turn completes only after the third, and it keeps running to the
-    # tenth: cost must not open the gate, the completed turn must.
-    rk.turn_after_polls[lite.prefix + "panel-2--general"] = 3
-    rk.busy_polls[lite.prefix + "panel-2--general"] = 10
-    seen = []
+    rk.busy_polls[lite.prefix + "panel-2--warm"] = 4
+    run_stage(lite, parallel=4)
+    forks = [e for e in rk.events if e[0] == "fork" and "panel-2--" in e[1]]
+    assert forks[0][1].endswith("panel-2--warm")
+    warm = next(s for s in rk.fork_spawns if s["name"].endswith("panel-2--warm"))
+    assert warm["prompt"] == pr_lite.WARM_PROMPT and warm["source"] == forks[0][3]
+    stopped = rk.events.index(("stop", warm["child_id"]))
+    cells = [e for e in forks[1:]]
+    assert sorted(e[1].rsplit("--", 1)[-1] for e in cells) == ["always-lens", "general", "paths-lens"]
+    assert all(rk.events.index(e) > stopped for e in cells)
+    assert rk.polls[warm["child_id"]] > 4
+
+
+def test_a_failed_warm_up_still_runs_the_seats_cells(lite):
+    """A warm fork that ends without an answer costs the cells their cache, not
+    their review: they still run, and the miss is recorded."""
+    rk = lite.rk
+    # Answers match by sorted prefix, so the seat-wide answer is replaced by
+    # per-cell ones for the warm fork to be the one that fails.
+    del rk.answers[lite.prefix + "panel-2--"]
+    rk.answers[lite.prefix + "panel-2--warm"] = ""
+    for cell in ("general", "always", "paths"):
+        rk.answers[lite.prefix + "panel-2--" + cell] = CELL_HIT
+    run_stage(lite)
+    cells = [e for e in rk.events if e[0] == "fork" and "panel-2--" in e[1] and not e[1].endswith("--warm")]
+    assert len(cells) == 3
+    assert friction_of(lite.rdir, "warm-failed")
+
+
+def test_a_warm_fork_that_cannot_spawn_skips_its_seat(lite):
+    rk = lite.rk
     orig = rk.spawn_fork
 
     def spawn_fork(name, **kw):
-        warm = next((c for c, ch in rk._children.items() if ch["name"].endswith("panel-2--general")), None)
-        seen.append((name, rk.polls.get(warm, 0)))
+        if name.endswith("panel-2--warm"):
+            raise Fail("spawn refused: the seat is misconfigured")
         return orig(name, **kw)
 
     rk.spawn_fork = spawn_fork
-    run_stage(lite, parallel=4)
-    panel = [(n, p) for n, p in seen if "panel-2" in n]
-    assert panel[0][0].endswith("panel-2--general")
-    # Its siblings were spawned only once its first turn had completed (from the
-    # 4th poll), and while the warm cell was still running: the gate is the first
-    # turn, not the whole cell, and not its cost.
-    assert len(panel) == 3 and all(p >= 4 for _, p in panel[1:])
-    assert all(p <= 10 for _, p in panel[1:])
-
-
-def test_a_warm_cell_that_never_lands_stops_its_seat(lite):
-    rk = lite.rk
-    # Answers match by sorted prefix, so the seat-wide answer is replaced by
-    # per-cell ones for the warm cell to be the one that fails.
-    del rk.answers[lite.prefix + "panel-2--"]
-    rk.answers[lite.prefix + "panel-2--general"] = ""
-    rk.answers[lite.prefix + "panel-2--always"] = CELL_HIT
-    rk.answers[lite.prefix + "panel-2--paths"] = CELL_HIT
-    rk.no_turn.add(lite.prefix + "panel-2--general")
     run_stage(lite)
-    forks = [e for e in rk.events if e[0] == "fork" and "panel-2" in e[1]]
-    assert [e[1].rsplit("-", 1)[-1] for e in forks] == ["general"]
+    assert not [e for e in rk.events if e[0] == "fork" and "panel-2--" in e[1]]
     assert friction_of(lite.rdir, "warm-failed")
 
 
@@ -374,13 +367,14 @@ def test_the_stage_reports_cost_cache_and_timing(lite, capsys):
     assert set(seats) == {"review-lite:gather", "review-lite:panel-1", "review-lite:panel-2",
                           "review-lite:consolidate"}
     p2 = seats["review-lite:panel-2"]
-    assert p2["delivery"] == "fork" and p2["children"] == 3
-    assert p2["cost_usd"] == pytest.approx(0.03) and p2["cost_unreported"] == 0
-    assert p2["input_tokens"] == 30 and p2["cache_pct"] == 0
+    # Three cells plus the seat's warm fork, whose cost is the seat's too.
+    assert p2["delivery"] == "fork" and p2["children"] == 4
+    assert p2["cost_usd"] == pytest.approx(0.04) and p2["cost_unreported"] == 0
+    assert p2["input_tokens"] == 40 and p2["cache_pct"] == 0
     assert set(stats["phases_s"]) >= {"gather", "cells"}
     assert stats["cost_usd"] == pytest.approx(sum(r["cost_usd"] for r in stats["seats"]))
     assert f"lite {adir.name}:" in capsys.readouterr().out
-    assert out["stats"]["seats"]["review-lite:panel-2"]["n"] == 3
+    assert out["stats"]["seats"]["review-lite:panel-2"]["n"] == 4
     assert len(json.dumps(out["stats"])) < 4096
 
 

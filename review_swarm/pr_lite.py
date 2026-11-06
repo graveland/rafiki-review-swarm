@@ -19,17 +19,16 @@ review/NN/ (one dir per cell, candidates.jsonl, checklist.jsonl) and verify/NN/
 Concurrency is what `max_children` bounds (the daemon counts live, non-exited
 descendants), so every child is stopped as soon as it is collected and the
 gatherer is stopped once it has settled: a fork reads its source's stored
-nodes, never the live child. Fork cells are queued seat-major with one warm
-cell per seat first, because a provider's prefix cache only serves requests
-that arrive after the first one carrying the prefix has completed.
+nodes, never the live child. Each fork seat first runs a throwaway warm fork
+(the pack plus one short line) and releases its cells only once that has
+completed: a provider cache stores an entry where a request ends, so only a
+request that ends at the pack leaves an entry every cell of the seat can use.
 """
 
 import json
 import os
 import threading
 import time
-
-from rafiki import ConnectError
 
 from . import pr_gather, pr_review, pr_state, pr_verify
 from .analysis import hallucination_checks
@@ -44,6 +43,9 @@ CLAIM = "lite.lock"
 GENERAL = "general"
 DEFAULT_TIMEOUT = 1800
 DEFAULT_PARALLEL = 6
+# What a seat's throwaway warm fork is asked: the shortest request that
+# carries the whole pack, so the cache entry it leaves ends where the pack ends.
+WARM_PROMPT = "Reply with the single word READY."
 GATHER_TIMEOUT = 1800
 POLL = 3.0
 # The pack may take this share of the smallest fork consumer's window: the
@@ -564,10 +566,62 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
             continue
         usable_seats.append(seat)
 
-    # Phase 3: fork cells, seat-major, one warm cell per seat before the rest.
+    # Phase 3: per fork seat, a throwaway warm fork, then every real cell.
+    #
+    # A provider cache stores an entry where a request ENDS and serves a later
+    # request the longest stored entry it begins with (the ChatGPT backend
+    # stores nothing along the way). A real cell's request ends in its own
+    # ~1k-token instruction, so an entry written by it serves no sibling. The
+    # warm fork's request is the pack plus one short line, so the entry it
+    # leaves ends at the pack, which every real cell of the seat begins with.
     queues = {s: [c for c in cells.values() if c["seat"] == s and c["delivery"] == "fork"] for s in usable_seats}
-    warm = {}  # seat -> "pending" | "warm" | "failed"
+    warms = {}  # seat -> {"key", "child_id", "spawned_at", "state": "running" | "done" | "failed"}
     forks_running = {}
+
+    def start_warm(seat):
+        key = f"{pr_review.slug(seat.rsplit(':', 1)[-1])}--warm"
+        try:
+            cid, _ = spawn_fork(key, seat, gcid, WARM_PROMPT,
+                                {**labels_base, "review/seat": seat, "review/cell": key, "review/delivery": "warm"})
+        except AtCap:
+            return AT_CAP
+        except Fail as e:
+            # Every fork of this seat would be refused the same way: the seat is
+            # wrong, not the warm-up.
+            friction(rdir, seat, "warm-failed", f"the warm fork did not spawn ({e}); this seat's "
+                                                f"{len(queues[seat])} cell(s) are not spawned", key)
+            queues[seat] = []
+            warms[seat] = {"key": key, "state": "failed"}
+            return None
+        warms[seat] = {"key": key, "child_id": cid, "spawned_at": time.time(), "state": "running"}
+        forks_running[cid] = warms[seat]
+        return cid
+
+    def collect_warms():
+        for seat, w in warms.items():
+            if w["state"] != "running":
+                continue
+            got = settled(rk, w["child_id"], timed_out=time.time() - w["spawned_at"] > timeout)
+            if got is None:
+                continue
+            info, conv = got
+            wdir = adir / w["key"]
+            wdir.mkdir(exist_ok=True)
+            m = child_metrics(info, conv, set())
+            m["wall_s"] = round(time.time() - w["spawned_at"], 1)
+            m["delivery"] = "warm"
+            (wdir / "child.json").write_text(json.dumps(m, indent=2, sort_keys=True) + "\n")
+            rk.stop(w["child_id"])
+            forks_running.pop(w["child_id"], None)
+            if conv and final_answer(conv):
+                w["state"] = "done"
+            else:
+                # The cells still run; they just start cold. Losing the reviews
+                # over a failed warm-up would cost more than the cache saves.
+                w["state"] = "failed"
+                friction(rdir, seat, "warm-failed", f"the warm fork ended without an answer (status "
+                                                    f"{info.get('status')}); this seat's cells run uncached",
+                         w["key"])
 
     def start_fork(c):
         try:
@@ -582,73 +636,41 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
         forks_running[cid] = c
         return cid
 
-    def next_fork():
-        """Seat-major: the earliest seat whose cells may go. A seat's warm cell
-        goes first; its other cells wait until the warm cell's first turn has
-        completed, so they arrive at a provider cache that already holds the
-        pack (the ChatGPT backend serves a prefix only once the request that
-        carried it is done; one still streaming leaves every sibling cold)."""
+    def warming():
+        return any(w["state"] == "running" for w in warms.values())
+
+    def next_job():
+        """Seat-major: a seat with no warm-up yet starts one; a seat whose
+        warm-up has ended releases its cells. A warm-up still running holds its
+        seat's cells, so none goes out before the entry they share exists."""
         for s in usable_seats:
-            q = queues[s]
-            if not q:
-                continue
-            state_ = warm.get(s)
-            if state_ is None:
-                return s, q[0]
-            if state_ == "warm":
-                return s, q[0]
+            if s not in warms:
+                return s, None
+            if warms[s]["state"] != "running" and queues[s]:
+                return s, queues[s][0]
         return None, None
 
-    def update_warm():
-        for s in usable_seats:
-            if warm.get(s) != "pending":
-                continue
-            wc = next(c for c in cells.values() if c.get("warm_for") == s)
-            if wc["key"] in records:
-                if records[wc["key"]]["parse_error"] is None or turn_landed(rk, wc):
-                    warm[s] = "warm"
-                else:
-                    warm[s] = "failed"
-                    friction(rdir, s, "warm-failed",
-                             f"the warm cell {wc['key']} ended before its first turn landed; this seat's "
-                             f"other {len(queues[s])} cell(s) are not spawned", wc["key"])
-                    queues[s] = []
-            elif turn_landed(rk, wc):
-                warm[s] = "warm"
-
-    while any(queues.values()) or running:
+    while any(queues.values()) or running or warming():
         stop.check()
-        update_warm()
+        collect_warms()
         while len(forks_running) < parallel:
-            s, c = next_fork()
-            if c is None:
+            s, c = next_job()
+            if s is None:
                 break
-            got = start_fork(c)
+            got = start_warm(s) if c is None else start_fork(c)
             if got is AT_CAP:
-                if not running:
+                if not forks_running and not running:
                     raise Fail(f"spawn refused at the live-children cap with nothing of ours running; "
                                f"this stage needs max_children >= {need}")
                 break
-            queues[s].pop(0)
-            if s in warm:
-                continue
-            if got is None:
-                # The seat's first spawn failed, and every other cell of it would
-                # fail the same way: the seat is wrong, not the cell.
-                warm[s] = "failed"
-                friction(rdir, s, "warm-failed", f"the warm cell {c['key']} did not spawn; this seat's other "
-                                                 f"{len(queues[s])} cell(s) are not spawned", c["key"])
-                queues[s] = []
-                continue
-            warm[s] = "pending"
-            c["warm_for"] = s
+            if c is not None:
+                queues[s].pop(0)
         before = set(running)
         collect_ready()
         for cid in before - set(running):
             forks_running.pop(cid, None)
-        if running or any(queues.values()):
+        if running or any(queues.values()) or warming():
             time.sleep(POLL)
-    update_warm()
 
     phases["cells"] = (phases.get("gather", (started, started))[1], time.time())
     if not records:
@@ -690,6 +712,7 @@ def _run(rk, home, args, rdir, run, cfg, specs, parallel, timeout, state, spawne
          "consolidator": cseat, "delivery": delivery_of}, indent=1, sort_keys=True) + "\n")
 
     seat_of = {k: c["seat"] for k, c in cells.items()}
+    seat_of.update({w["key"]: s for s, w in warms.items()})
     seat_of.update({"gather": cfg["gather"], "consolidate": cseat})
     stats = lite_stats(adir, vdir, specs, seat_of, delivery_of, phases, started)
     (adir / "stats.json").write_text(json.dumps(stats, indent=1, sort_keys=True) + "\n")
@@ -810,22 +833,6 @@ def stats_summary(stats):
 
 def write_manifest(rdir, manifest):
     (rdir / "packet" / "manifest.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
-
-
-def turn_landed(rk, cell):
-    """Whether a cell's first model turn has COMPLETED: its export holds an
-    assistant turn with reported output. Cost is no signal: it turns positive
-    while the turn is still streaming, before a provider that caches on
-    completion (the ChatGPT backend) can serve the prefix. A fork's export holds
-    only its own turns, so this poll stays small however large the pack is."""
-    try:
-        conv = rk.export(cell["child_id"])
-    except ConnectError as e:
-        if e.code == "not_found":
-            return False  # nothing captured yet
-        raise
-    return any(t.get("role") == "assistant" and t.get("output_tokens") is not None
-               for t in (conv or {}).get("turns") or [])
 
 
 def collect(rk, adir, rdir, tree, mode, cell, info, conv):
